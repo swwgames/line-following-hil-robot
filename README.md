@@ -2,11 +2,11 @@
 
 This project implements a **line-following robot** using **Hardware-in-the-Loop (HiL) simulation** with **Webots** and an **ESP32 microcontroller running MicroPython**. It was developed for the final graded assignment of the *Robotics and Python* course, Lab 7.
 
-## 🚀 Overview
+## Overview
 
 The robot receives sensor data from Webots over serial, processes it in real-time using code running on the ESP32, and sends motor speed commands back to Webots. The setup mimics real-world embedded control and demonstrates line-following behavior using simulated ground sensors.
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```
 line-following-hil-robot/
@@ -21,7 +21,7 @@ line-following-hil-robot/
 └── .gitignore
 ```
 
-## ⚙️ Dependencies
+## Dependencies
 
 ### ESP32 Setup
 - **Board**: ESP32 WROOM-32 DevKit
