@@ -34,7 +34,7 @@ line-following-hil-robot/
 - **Python Version**: Python 3.10.5 (64-bit)
 - **Webots World**: Lab 7 world with `e-puck` robot
 
-## 🔧 How to Run
+## How to Run
 
 ### 1. Flash and Upload to ESP32
 1. Flash MicroPython firmware if not already installed.
