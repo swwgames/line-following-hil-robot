@@ -3,6 +3,7 @@
 from controller import Robot
 import struct
 import serial
+import time
 
 # Constants for serial communication
 HEADER = b'S'
@@ -34,6 +35,12 @@ class LineFollower(Robot):
             self.gs.append(self.robot.getDevice(self.gsNames[i]))
             self.gs[i].enable(self.timestep)
 
+        self.encoder = []
+        self.encoderNames = ['left wheel sensor', 'right wheel sensor']
+        for i in range(2):
+            self.encoder.append(self.robot.getDevice(self.encoderNames[i]))
+            self.encoder[i].enable(self.timestep)
+
         # motors
         self.leftMotor = self.robot.getDevice('left wheel motor')
         self.rightMotor = self.robot.getDevice('right wheel motor')
@@ -47,6 +54,10 @@ class LineFollower(Robot):
     def read_ground_sensors(self) -> list:
         """Read and return ground sensor values as a list [right, center, left]."""
         return [self.gs[i].getValue() for i in range(3)]
+
+    def read_encoders(self) -> list:
+        """Read and return ground sensor values as a list [right, center, left]."""
+        return [self.encoder[i].getValue() for i in range(2)]
 
     def set_motor_speeds(self, left: float, right: float) -> None:
         """Set motor speed values for left and right motors."""
@@ -79,6 +90,26 @@ def read_packet(ser: serial.Serial) -> tuple[float, float] | tuple[None, None]:
 
     return None, None
 
+def send_packet(ser, packet_type: bytes, payload: bytes):
+    payload_size = len(payload)
+    packet = HEADER + packet_type + bytes([payload_size]) + payload
+    ser.write(packet)
+
+def receive_packet(ser) -> tuple[bytes, bytes] | None:
+    while ser.in_waiting >= 3:
+        if ser.read(1) != HEADER:
+            print("Incomplete data:", ser.read())
+            continue
+        packet_type = ser.read(1)
+        size = ord(ser.read(1))
+        data = ser.read(size)
+        if len(data) < size:
+            print("Incomplete packet received")
+            continue
+        return packet_type, data
+    return None
+
+
 def main():
     """Main simulation loop: read sensors, send data to ESP32, receive motor speeds."""
 
@@ -92,15 +123,20 @@ def main():
 
     while lf.robot.step(lf.timestep) != -1:
         gs_values = lf.read_ground_sensors()
-        packet = struct.pack('!fff', gs_values[0], gs_values[1], gs_values[2])
-        ser.write(HEADER + packet)
+        gs_payload = struct.pack('!fff', *gs_values)
+        send_packet(ser, b'g', gs_payload)
 
-        right_speed, left_speed = read_packet(ser)
-        if right_speed is not None and left_speed is not None:
-            print("Received Right Speed:", right_speed)
-            print("Received Left Speed:", left_speed)
-            lf.set_motor_speeds(left_speed, right_speed)
+        encoder_values = lf.read_encoders()
+        encoder_payload = struct.pack('!ff', *encoder_values)
+        send_packet(ser, b'e', encoder_payload)
 
+        response = receive_packet(ser)
+        if response:
+            packet_type, data = response
+            if packet_type == b'm':
+                right_speed, left_speed = struct.unpack('!ff', data)
+                lf.set_motor_speeds(left_speed, right_speed)
+        time.sleep(0.02)
     ser.close()
 
 if __name__ == '__main__':
