@@ -56,7 +56,7 @@ class LineFollower(Robot):
         return [self.gs[i].getValue() for i in range(3)]
 
     def read_encoders(self) -> list:
-        """Read and return ground sensor values as a list [right, center, left]."""
+        """Read and return encoder values as a list [right, left]."""
         return [self.encoder[i].getValue() for i in range(2)]
 
     def set_motor_speeds(self, left: float, right: float) -> None:
@@ -114,7 +114,7 @@ def main():
     """Main simulation loop: read sensors, send data to ESP32, receive motor speeds."""
 
     try:
-        ser = serial.Serial(port='COM8', baudrate=115200, timeout=5)
+        ser = serial.Serial(port='COM13', baudrate=115200, timeout=5)
     except:
         print("Communication failed.")
         raise
@@ -130,12 +130,17 @@ def main():
         encoder_payload = struct.pack('!ff', *encoder_values)
         send_packet(ser, b'e', encoder_payload)
 
+
         response = receive_packet(ser)
         if response:
             packet_type, data = response
             if packet_type == b'm':
                 right_speed, left_speed = struct.unpack('!ff', data)
                 lf.set_motor_speeds(left_speed, right_speed)
+
+            if packet_type == b't':
+                x, y, theta = struct.unpack('!fff', data)
+                print(f'x: {x}, y: {y}, theta: {theta}')
         time.sleep(0.02)
     ser.close()
 

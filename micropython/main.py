@@ -18,40 +18,52 @@ PACKET_TYPE = b'p'
 MAX_SPEED = 6.28
 BASE_SPEED = 0.4 * MAX_SPEED
 
-Kp, Ki, Kd = 6.0, 0.0, 2.0  # PID coefficients
+Kp, Ki, Kd = 2.0, 0.0, 0.05  # PID coefficients
 
 
 class Odometry:
     def __init__(self, wheel_radius, wheel_base, ticks_per_rev):
-        self.x = 0.0
-        self.y = 0.0
-        self.theta = 0.0
+        self.x = 0.5
+        self.y = -0.101
+        self.theta = 1.5708
         self.wheel_radius = wheel_radius
         self.wheel_base = wheel_base
         self.ticks_per_rev = ticks_per_rev
-        self.prev_ticks_left = 0
-        self.prev_ticks_right = 0
+        self.prev_ang_diff_l = 0
+        self.prev_ang_diff_r = 0
 
-    def update(self, ticks_left, ticks_right):
+    def update(self, ang_l, ang_r, delta_t):
         if self.ticks_per_rev == 0 or self.wheel_base == 0:
-            return
+            return self.x, self.y, self.theta
 
-        ΔL_ticks = ticks_left - self.prev_ticks_left
-        ΔR_ticks = ticks_right - self.prev_ticks_right
+        ang_diff_l = ang_l - self.prev_ang_diff_l
+        ang_diff_r = ang_r - self.prev_ang_diff_r
 
-        self.prev_ticks_left = ticks_left
-        self.prev_ticks_right = ticks_right
+        self.prev_ang_diff_l = ang_l
+        self.prev_ang_diff_r = ang_r
 
-        ΔL = 2 * 3.1415 * self.wheel_radius * (ΔL_ticks / self.ticks_per_rev)
-        ΔR = 2 * 3.1415 * self.wheel_radius * (ΔR_ticks / self.ticks_per_rev)
+        wl = ang_diff_l / delta_t
+        wr = ang_diff_r / delta_t
 
-        ΔC = (ΔL + ΔR) / 2
-        Δθ = (ΔR - ΔL) / self.wheel_base
+        u = self.wheel_radius / 2.0 * (wr + wl)
+        w = self.wheel_radius / self.wheel_base * (wr - wl)
 
-        self.theta += Δθ
-        self.x += ΔC * math.cos(self.theta - Δθ / 2)
-        self.y += ΔC * math.sin(self.theta - Δθ / 2)
+        delta_theta = w * delta_t
+        self.theta += delta_theta
 
+        # Normalize angle to [-π, π]
+        if self.theta >= math.pi:
+            self.theta -= 2 * math.pi
+        elif self.theta < -math.pi:
+            self.theta += 2 * math.pi
+
+        delta_x = u * math.cos(self.theta) * delta_t
+        delta_y = u * math.sin(self.theta) * delta_t
+
+        self.x += delta_x
+        self.y += delta_y
+
+        return self.x, self.y, self.theta
 
 
 class LineFollowerController:
@@ -143,8 +155,11 @@ class LineFollowerController:
                     motor_payload = struct.pack('!ff', right_speed, left_speed)
                     send_packet(self.uart, b'm', motor_payload)
                 elif packet_type == b'e':
-                    ticks_left, ticks_right = struct.unpack('!ff', data)
-                    odom.update(ticks_left, ticks_right)
+                    ang_l, ang_r = struct.unpack('!ff', data)
+                    x, y, theta = odom.update(ang_l, ang_r, delta_t=0.02)
+
+                    messages_payload = struct.pack('!fff', x, y, theta)
+                    send_packet(self.uart, b't', messages_payload)
 
             time.sleep(0.02)
 
