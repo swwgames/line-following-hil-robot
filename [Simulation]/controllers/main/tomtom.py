@@ -311,14 +311,12 @@ class TomTom:
         print(f"→ Navigating to pickup lane {pickup}")
         
         self.navigate_to(origin, pickup, heading)
-        self.tracer.drive_forward_until_bump()
         self.tracer.drive_backward_until_junction()
 
         # —— dropoff phase ——
         print(f"→ Navigating to dropoff lane {dropoff}")
         cNode = self._last_junction_before(pickup)
         self.navigate_to(cNode, dropoff, 'N')
-        self.tracer.drive_forward_until_bump()
         self.tracer.drive_backward_until_junction()
         self.current_node = self._last_junction_before(dropoff)
 

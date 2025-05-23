@@ -187,7 +187,7 @@ class LineTracer:
             # step simulation
             if not self.robot.step():
                 return
-            self.robot.set_wheel_speeds(-2, -2)
+            self.robot.set_wheel_speeds(-3, -3)
 
             # 2) check for junction under the front array
             flags = self.robot.read_line_sensors('right')  # bool[5]
