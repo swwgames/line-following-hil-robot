@@ -1,47 +1,23 @@
-from robot import EPUCKRobot
-
 class LineTracer:
     """
     PID-based line tracer using EPUCKRobot with 5‐sensor front array
     and 5‐sensor side arrays for junction detection.
     """
-    def __init__(self, robot: EPUCKRobot, base_speed=4.0, max_speed=5.0, kp=0.0010, ki=0.0001, kd=0.0050):
+    def __init__(self, pid, robot):
         self.robot = robot
-        self.base_speed = base_speed
-        self.max_speed = max_speed
-        self.kp = kp
-        self.ki = ki
-        self.kd = kd
-        self.last_error = 0.0
-        self.integral_error = 0.0
-
-    def compute_error(self):
-        """
-        Compute lateral error from the front‐array:
-        leftmost minus rightmost sensor.
-        """
-        front = self.robot.read_ground_sensors('front')  # 5 values
-        left, center, right = front[1], front[2], front[3]
-        return left - right
-
-    def compute_control(self, error):
-        p = self.kp * error
-        self.integral_error += error
-        max_int = self.max_speed / max(self.ki, 1e-6)
-        self.integral_error = max(-max_int, min(max_int, self.integral_error))
-        i = self.ki * self.integral_error
-        d = self.kd * ((error - self.last_error) / self.robot.time_step)
-        self.last_error = error
-        return p + i + d
+        self.pid = pid
+        self.base_speed = 4.0
+        self.max_speed = 5.0
 
     def step(self):
         if not self.robot.step():
             return False
-        error = self.compute_error()
-        corr = self.compute_control(error)
+        error = self.pid.compute_error(self.robot)
+        corr = self.pid.compute_control(self.robot, error)
         ls = max(-self.max_speed, min(self.max_speed, self.base_speed + corr))
         rs = max(-self.max_speed, min(self.max_speed, self.base_speed - corr))
         self.robot.set_wheel_speeds(ls, rs)
+        
         return True
 
     def pivot_into_direction(self, direction='CCW', turn_speed=2.0):

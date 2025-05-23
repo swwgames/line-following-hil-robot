@@ -3,10 +3,12 @@
 from robot import EPUCKRobot
 from linetracer import LineTracer
 from tomtom import TomTom
+from pid import PID
 
 def main():
     robot     = EPUCKRobot()
-    tracer    = LineTracer(robot)
+    pid       = PID()
+    tracer    = LineTracer(pid, robot)
     navigator = TomTom(tracer)
 
     node, new_heading = navigator.locate_self(known_heading='N')
