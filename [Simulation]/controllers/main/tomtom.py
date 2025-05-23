@@ -37,14 +37,7 @@ grid_map = {
 }
 
 class TomTom:
-    """
-    Navigator that plans and executes routes on a grid of named nodes,
-    using a LineTracer to follow lines and make 90° turns.
-    """
-    def __init__(
-        self,
-        tracer
-    ):
+    def __init__(self, tracer):
         self.tracer = tracer
         self.grid_map = grid_map
 
@@ -70,10 +63,6 @@ class TomTom:
         """
         Compute the minimal sequence of 90° turns (CW/CCW) to go from
         self.heading to desired (one of 'N','E','S','W').
-        Returns:
-          None          = no turn
-          'CW' or 'CCW' = single 90°
-          ('CW','CW')  = 180°
         """
         order = ['N','E','S','W']
         ci = order.index(self.heading)
@@ -88,13 +77,7 @@ class TomTom:
         # diff == 2
         return ('CW','CW')
 
-    def navigate_to(
-        self,
-        origin: str,
-        goal: str,
-        start_heading: str = 'N'
-    ):
-        # re-init state
+    def navigate_to(self, origin: str, goal: str, start_heading: str = 'N'):
         self.current_node = origin
         self.heading = start_heading
 
@@ -118,9 +101,8 @@ class TomTom:
             turns = self._relative_turn(desired)
             print(f"At {self.current_node}, heading={self.heading} → next={next_node}, desired={desired}, turns={turns}")
 
-            # 3) pivot **in place** if needed
+            # 3) pivot if needed
             if turns is None:
-                # no pivot; we just go straight off this junction
                 pass
             else:
                 # could be single or double 90°’s
@@ -135,12 +117,11 @@ class TomTom:
                 # now we are already aligned with the new branch
                 self.heading = desired
 
-            # 4) drive straight to the _next_ junction
+            # 4) drive straight to the next junction
             if next_node.startswith('P'):
                 self.tracer.drive_forward_until_bump()
             else:
                 self.tracer.follow_until_junction()
-
 
             # 5) update position
             self.current_node = next_node
@@ -224,9 +205,9 @@ class TomTom:
 
             # sense which branches exist here
             obs = self._sense_junction()
-            print(f"[Step {steps}] saw {obs}, candidates={candidates}")
+            print(f"[Step {steps}] saw {obs}, candidates={len(candidates)}")
 
-            # 2) eliminate any candidate whose map‐pattern ≠ obs
+            # 2) eliminate any candidate whose map‐pattern are not equal to obs
             candidates = [
                 (node,head)
                 for node,head in candidates
@@ -291,7 +272,7 @@ class TomTom:
     def _last_junction_before(self, pnode: str) -> str:
         """
         In our grid every P-lane node has exactly one neighbor
-        that *is* a junction.  Return that neighbor.
+        that is a junction. Return that neighbor.
         """
         nbrs = [n for n in self.grid_map[pnode].values() if n]
         if len(nbrs) != 1:
