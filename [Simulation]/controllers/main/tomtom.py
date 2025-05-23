@@ -166,26 +166,45 @@ class TomTom:
             print(f"At {self.current_node}, heading={self.heading} → next={next_node}, desired={desired}, turns={turns}")
 
             # 3) pivot if needed
-            if turns is None:
-                pass
-            else:
-                # could be single or double 90°’s
-                if isinstance(turns, tuple):
-                    for t in turns:
-                        print(f" Pivot: {t}")
-                        self.tracer.pivot_into_direction(direction=t)
-                else:
-                    print(f" Pivot: {turns}")
-                    self.tracer.pivot_into_direction(direction=turns)
+            if turns is not None:
+                for t in (turns if isinstance(turns, tuple) else (turns,)):
+                    self.tracer.pivot_into_direction(direction=t)
 
-                # now we are already aligned with the new branch
+                # now we’re aligned with the branch
                 self.heading = desired
 
             # 4) drive straight to the next junction
             if next_node.startswith('P'):
                 self.tracer.drive_forward_until_bump()
             else:
-                self.tracer.follow_until_junction()
+                junction = self.tracer.follow_until_junction()
+
+                expected = set()
+
+                for rel in ('F','L','R'):
+                    if rel == 'F':
+                        abs_rel = self.heading
+                    elif rel == 'L':
+                        abs_rel = self._rotate_heading(self.heading, 'CCW')
+                    else:  # 'right'
+                        abs_rel = self._rotate_heading(self.heading, 'CW')
+
+                    if self.grid_map[next_node][abs_rel] is not None:
+                        expected.add(rel)
+
+                seen = set(junction)
+                if seen != expected:
+                    print(f"Junction validation failed at {next_node}: "f"expected {expected}, saw {seen}")
+
+                    loc = self.locate_self(known_heading=self.heading)
+                    if loc:
+                        self.current_node, self.heading = loc
+                        print(f"Re-localised to {self.current_node}, heading={self.heading}, ""replanning…")
+                        return self.navigate_to(self.current_node, goal, self.heading)
+                    else:
+                        print("Could not re-localize; aborting navigation")
+                        self.robot.stop()
+                        return
 
             # 5) update position
             self.current_node = next_node
@@ -215,10 +234,7 @@ class TomTom:
         flags['right'] = any(self.tracer.robot.read_line_sensors('right'))
         return flags
 
-    def _match_observation(self,
-                           node: str,
-                           heading: str,
-                           obs: Dict[str,bool]) -> bool:
+    def _match_observation(self,node: str, heading: str, obs: Dict[str,bool]) -> bool:
         """
         Given a map node & heading candidate, return True if its
         map‐neighbors match the observed front/left/right availability.
@@ -236,11 +252,7 @@ class TomTom:
                 return False
         return True
 
-    def locate_self(
-        self,
-        max_steps: int = 50,
-        known_heading: Optional[str] = None
-    ) -> Optional[Tuple[str,str]]:
+    def locate_self(self, max_steps: int = 50, known_heading: Optional[str] = None) -> Optional[Tuple[str,str]]:
         """
         Drive through junctions until the robot deduces its exact
         (node, heading).  If you know your initial heading, pass it
@@ -327,10 +339,10 @@ class TomTom:
         # done
         if len(candidates) == 1:
             node, head = candidates[0]
-            print(f"✅ Located at {node}, heading={head}")
+            print(f"Located at {node}, heading={head}")
             return node, head
         else:
-            print("❌ Unable to localize uniquely")
+            print("Unable to localize uniquely")
             return None
         
     def _last_junction_before(self, pnode: str) -> str:

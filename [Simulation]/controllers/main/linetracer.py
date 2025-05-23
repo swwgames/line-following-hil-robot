@@ -122,7 +122,9 @@ class LineTracer:
         # 3) stop the robot if it has to turn
         if 'F' not in dirs:
             self.robot.stop()
-            
+
+        return dirs    
+        
     def drive_forward_until_bump(self):
         """
         Follow the line with PID control until the bump sensor trips.
