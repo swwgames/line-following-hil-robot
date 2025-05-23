@@ -1,27 +1,16 @@
 from controller import Robot
 
 class EPUCKRobot:
-    """
-    Low-level interface to the e-puck in Webots.
-    Provides stepping, ground-sensor reading, and motor control.
-    """
-    def __init__(
-        self,
-        time_step=64,
-        sensor_names=('gs0','gs1','gs2'),
-        left_motor_name='left wheel motor',
-        right_motor_name='right wheel motor',
-        line_threshold=400
-    ):
-        self.time_step = time_step
-        self.line_threshold = line_threshold
+    def __init__(self):
+        self.time_step = 64
+        self.line_threshold = 400
 
         # initialize Webots Robot
         self.robot = Robot()
 
         # setup motors
-        self.left_motor = self.robot.getDevice(left_motor_name)
-        self.right_motor = self.robot.getDevice(right_motor_name)
+        self.left_motor = self.robot.getDevice('left wheel motor')
+        self.right_motor = self.robot.getDevice('right wheel motor')
         for m in (self.left_motor, self.right_motor):
             m.setPosition(float('inf'))
             m.setVelocity(0.0)
@@ -34,6 +23,7 @@ class EPUCKRobot:
             sensor.enable(self.time_step)
             self.sensors.append(sensor)
         
+        # setup proximity sensor
         self.prox = self.robot.getDevice('ps7')
         self.prox.enable(self.time_step)
 
@@ -47,7 +37,7 @@ class EPUCKRobot:
     def read_ground_sensors(self, array: str = 'front'):
         """
         Return raw values from one of the three 5-sensor arrays.
-        :param array: 'front', 'left' or 'right'
+        'front', 'left' or 'right'
         """
         groups = {
             'left': self.sensors[0:5],
