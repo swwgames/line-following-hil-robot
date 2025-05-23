@@ -1,0 +1,194 @@
+#VRML_SIM R2023a utf8
+# license: Copyright Cyberbotics Ltd. Licensed for use only with Webots.
+# Ground sensors extension for the e-puck robot:
+#   5 front-facing infra-red proximity sensors.
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023a/projects/appearances/protos/Pcb.proto"
+
+PROTO E-puckGroundSensors [
+  field SFVec3f    translation  0 0 0
+  field SFRotation rotation     0 0 1 0
+]
+{
+  Transform {
+    translation IS translation
+    rotation    IS rotation
+    children [
+      
+      # PCB mounting plate
+      DEF EPUCK_GROUND_SENSOR_CIRCUIT Transform {
+        translation 0 0 0.014
+        rotation    0.57735 0.57735 0.57735 2.094395
+        children [
+          Shape {
+            appearance Pcb { }
+            geometry Box { size 0.027 0.02 0.001 }
+          }
+        ]
+      }
+      
+      # Visual shape for all ground sensors
+      DEF EPUCK_GS_SHAPE Shape {
+        appearance PBRAppearance {
+          baseColor  0.3 0.2 0.2
+          roughness  0.4
+          metalness  0
+        }
+        geometry Box { size 0.002 0.004 0.002 }
+      }
+      
+      ############################
+      # Five front-facing IR sensors
+      ############################
+      # All five are placed at y=0.01 m (just under the front bumper),
+      # spanning x = –0.02…+0.02 m in 0.01 m steps, at z = 0.003 m above ground.
+      
+      DistanceSensor {
+        translation   0.01  -0.015  0.003
+        rotation      0 1 0 1.570796
+        children      [ USE EPUCK_GS_SHAPE ]
+        name          "gs9"
+        lookupTable [
+          0      1000   0.002
+          0.016  300    0.004
+        ]
+        type "infra-red"
+      }
+      DistanceSensor {
+        translation   0.01  -0.0075  0.003
+        rotation      0 1 0 1.570796
+        children      [ USE EPUCK_GS_SHAPE ]
+        name          "gs8"
+        lookupTable [
+          0      1000   0.002
+          0.016  300    0.004
+        ]
+        type "infra-red"
+      }
+      DistanceSensor {
+        translation    0.01  0.00  0.003
+        rotation      0 1 0 1.570796
+        children      [ USE EPUCK_GS_SHAPE ]
+        name          "gs7"
+        lookupTable [
+          0      1000   0.002
+          0.016  300    0.004
+        ]
+        type "infra-red"
+      }
+      DistanceSensor {
+        translation    0.01  0.0075  0.003
+        rotation      0 1 0 1.570796
+        children      [ USE EPUCK_GS_SHAPE ]
+        name          "gs6"
+        lookupTable [
+          0      1000   0.002
+          0.016  300    0.004
+        ]
+        type "infra-red"
+      }
+      DistanceSensor {
+        translation    0.01  0.015  0.003
+        rotation      0 1 0 1.570796
+        children      [ USE EPUCK_GS_SHAPE ]
+        name          "gs5"
+        lookupTable [
+          0      1000   0.002
+          0.016  300    0.004
+        ]
+        type "infra-red"
+      }
+
+      ############################
+      # 5 Left-side sensors (horizontal at top)
+      ############################
+      # y = +0.015, x = –0.015…+0.015
+      DistanceSensor {
+        translation  -0.030 0.025 0.003
+        rotation      0 1 0 1.570796
+        children      [ USE EPUCK_GS_SHAPE ]
+        name          "gs0"
+        lookupTable [ 0 1000 0.002  0.016 300 0.004 ]
+        type "infra-red"
+      }
+      DistanceSensor {
+        translation   -0.0225 0.025 0.003
+        rotation      0 1 0 1.570796
+        children      [ USE EPUCK_GS_SHAPE ]
+        name          "gs1"
+        lookupTable [ 0 1000 0.002  0.016 300 0.004 ]
+        type "infra-red"
+      }
+      DistanceSensor {
+        translation    -0.015 0.025 0.003
+        rotation      0 1 0 1.570796
+        children      [ USE EPUCK_GS_SHAPE ]
+        name          "gs2"
+        lookupTable [ 0 1000 0.002  0.016 300 0.004 ]
+        type "infra-red"
+      }
+      DistanceSensor {
+        translation    -0.0075 0.025 0.003
+        rotation      0 1 0 1.570796
+        children      [ USE EPUCK_GS_SHAPE ]
+        name          "gs3"
+        lookupTable [ 0 1000 0.002  0.016 300 0.004 ]
+        type "infra-red"
+      }
+      DistanceSensor {
+        translation    0.0 0.025 0.003
+        rotation      0 1 0 1.570796
+        children      [ USE EPUCK_GS_SHAPE ]
+        name          "gs4"
+        lookupTable [ 0 1000 0.002  0.016 300 0.004 ]
+        type "infra-red"
+      }
+
+      ############################
+      # 5 Right-side sensors (horizontal at bottom)
+      ############################
+      # y = –0.015, x = –0.015…+0.015
+      DistanceSensor {
+        translation  -0.03 -0.025 0.003
+        rotation      0 1 0 1.570796
+        children      [ USE EPUCK_GS_SHAPE ]
+        name          "gs14"
+        lookupTable [ 0 1000 0.002  0.016 300 0.004 ]
+        type "infra-red"
+      }
+      DistanceSensor {
+        translation   -0.0225 -0.025 0.003
+        rotation      0 1 0 1.570796
+        children      [ USE EPUCK_GS_SHAPE ]
+        name          "gs13"
+        lookupTable [ 0 1000 0.002  0.016 300 0.004 ]
+        type "infra-red"
+      }
+      DistanceSensor {
+        translation    -0.015 -0.025 0.003
+        rotation      0 1 0 1.570796
+        children      [ USE EPUCK_GS_SHAPE ]
+        name          "gs12"
+        lookupTable [ 0 1000 0.002  0.016 300 0.004 ]
+        type "infra-red"
+      }
+      DistanceSensor {
+        translation    -0.0075 -0.025 0.003
+        rotation      0 1 0 1.570796
+        children      [ USE EPUCK_GS_SHAPE ]
+        name          "gs11"
+        lookupTable [ 0 1000 0.002  0.016 300 0.004 ]
+        type "infra-red"
+      }
+      DistanceSensor {
+        translation    0.0 -0.025 0.003
+        rotation      0 1 0 1.570796
+        children      [ USE EPUCK_GS_SHAPE ]
+        name          "gs10"
+        lookupTable [ 0 1000 0.002  0.016 300 0.004 ]
+        type "infra-red"
+      }
+      
+    ]  # end children
+  }  # end Transform
+}  # end PROTO

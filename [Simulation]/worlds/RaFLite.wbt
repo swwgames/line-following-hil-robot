@@ -1,0 +1,57 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023a/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023a/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "../protos/E-puckGroundSensors.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/gctronic/e-puck/protos/E-puck.proto"
+
+WorldInfo {
+}
+Viewpoint {
+  orientation 0.3603475916291086 0.32671133991349816 -0.8737329761311677 1.6603601121492868
+  position -0.07934631353132471 1.4089048134110618 1.413571067860799
+  follow "e-puck"
+  followType "None"
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+  texture "noon_cloudy_countryside"
+}
+RectangleArena {
+  translation -0.00521206 0.00438625 -5.55112e-16
+  rotation 0 0 1 4.692820414042842e-06
+  floorSize 1.2 0.8
+  floorTileSize 1.2 0.8
+  floorAppearance PBRAppearance {
+    baseColorMap ImageTexture {
+      url [
+        "textures/RaFLite_track.png"
+      ]
+    }
+    roughness 1
+    metalness 0
+  }
+}
+E-puck {
+  hidden position_0_0 87.38004346524858
+  hidden position_0_1 82.62067476879396
+  hidden linearVelocity_0 -1.1649335353571782e-06 -1.5184354641834065e-05 -3.354998057147393e-10
+  hidden angularVelocity_0 0.0010122898653906547 -7.766220999715076e-05 -4.9435268081470325e-11
+  hidden translation_1 0 0.025999999999997983 0.02
+  hidden rotation_1 0 -1 0 0.5845508352656348
+  hidden linearVelocity_1 -1.553083032553352e-06 -2.024579128026089e-05 1.692747431114382e-08
+  hidden angularVelocity_1 0.0010122898463423293 -7.766244924793336e-05 -4.129127324459953e-11
+  hidden translation_2 0 -0.025999999999999867 0.02
+  hidden rotation_2 0 -1 0 5.34391953172025
+  hidden linearVelocity_2 -1.5534026054274838e-06 -2.0245766746718397e-05 1.075702149578088e-09
+  hidden angularVelocity_2 0.0010122898828669902 -7.766197131063129e-05 -5.7576947622501993e-11
+  translation -0.010671499792524176 -0.04812870250301734 -6.396198525749838e-05
+  rotation -9.436445498858123e-06 -8.70815858740938e-06 -0.9999999999175607 1.647065375005949
+  controller "main"
+  groundSensorsSlot [
+    DEF E-puckGroundSensors E-puckGroundSensors {
+    }
+  ]
+}
