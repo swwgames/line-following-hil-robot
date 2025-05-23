@@ -1,5 +1,3 @@
-# main.py
-
 from robot import EPUCKRobot
 from linetracer import LineTracer
 from tomtom import TomTom

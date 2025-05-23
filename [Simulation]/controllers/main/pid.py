@@ -13,7 +13,7 @@ class PID:
         leftmost minus rightmost sensor.
         """
         front = robot.read_ground_sensors('front')
-        left, center, right = front[1], front[2], front[3]
+        left, right = front[1], front[3]
         return left - right
 
     def compute_control(self, robot, error):
