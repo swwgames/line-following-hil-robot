@@ -43,29 +43,93 @@ class TomTom:
 
     def plan_route(self, goal: str) -> List[str]:
         """
-        Breadth-first search for the shortest path from current_node to goal.
-        Returns list of node names, including start and goal; empty if unreachable.
+        0–1 BFS on (node,heading) states to minimize number of 90° turns.
+        Returns list of node names from current_node to goal (inclusive),
+        or [] if unreachable.
         """
-        frontier = deque([[self.current_node]])
-        visited = {self.current_node}
-        while frontier:
-            path = frontier.popleft()
-            node = path[-1]
-            if node == goal:
-                return path
-            for direction, neighbor in self.grid_map[node].items():
-                if neighbor and neighbor not in visited:
-                    visited.add(neighbor)
-                    frontier.append(path + [neighbor])
-        return []
+        from collections import deque
 
-    def _relative_turn(self, desired: str) -> Union[None, str, Tuple[str,str]]:
+        # all possible headings
+        headings = ['N', 'E', 'S', 'W']
+        start = (self.current_node, self.heading)
+
+        # initialize distances
+        INF = float('inf')
+        dist = {(n, h): INF for n in self.grid_map for h in headings}
+        dist[start] = 0
+
+        # to reconstruct the path
+        prev = {}
+
+        dq = deque([start])
+        while dq:
+            u_node, u_head = dq.popleft()
+            u_cost = dist[(u_node, u_head)]
+            # explore all available moves
+            for abs_dir, v in self.grid_map[u_node].items():
+                if v is None:
+                    continue
+                # compute how many 90° turns this move costs
+                turns = self._relative_turn(u_head, abs_dir)
+                if turns is None:
+                    w = 0
+                    new_head = u_head
+                elif isinstance(turns, tuple):
+                    w = len(turns)
+                    new_head = abs_dir
+                else:
+                    w = 1
+                    new_head = abs_dir
+
+                new_state = (v, new_head)
+                new_cost = u_cost + w
+                if new_cost < dist[new_state]:
+                    dist[new_state] = new_cost
+                    prev[new_state] = (u_node, u_head)
+                    # 0-cost edges → front, 1+-cost → back
+                    if w == 0:
+                        dq.appendleft(new_state)
+                    else:
+                        dq.append(new_state)
+
+        # pick the heading at 'goal' with the fewest turns
+        best_head, best_cost = min(
+            ((h, dist[(goal, h)]) for h in headings),
+            key=lambda x: x[1]
+        )
+        if best_cost == INF:
+            return []
+
+        # reconstruct the (node,heading) sequence
+        seq = []
+        state = (goal, best_head)
+        while state != start:
+            seq.append(state)
+            state = prev[state]
+        seq.append(start)
+        seq.reverse()
+
+        # return only the node names
+        return [node for node, _ in seq]
+
+    def _relative_turn(self, *args) -> Union[None, str, Tuple[str, str]]:
         """
-        Compute the minimal sequence of 90° turns (CW/CCW) to go from
-        self.heading to desired (one of 'N','E','S','W').
+        Compute minimal 90° turn(s) to go from `current`→`desired`.
+        Backward-compatible:
+          _relative_turn(desired)      uses self.heading as current
+          _relative_turn(current, desired)
         """
-        order = ['N','E','S','W']
-        ci = order.index(self.heading)
+        order = ['N', 'E', 'S', 'W']
+        # unpack args
+        if len(args) == 1:
+            current = self.heading
+            desired = args[0]
+        elif len(args) == 2:
+            current, desired = args
+        else:
+            raise TypeError(f"_relative_turn() expects 1 or 2 args, got {len(args)}")
+
+        ci = order.index(current)
         di = order.index(desired)
         diff = (di - ci) % 4
         if diff == 0:
@@ -75,7 +139,7 @@ class TomTom:
         if diff == 3:
             return 'CCW'
         # diff == 2
-        return ('CW','CW')
+        return ('CW', 'CW')
 
     def navigate_to(self, origin: str, goal: str, start_heading: str = 'N'):
         self.current_node = origin

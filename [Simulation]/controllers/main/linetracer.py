@@ -145,7 +145,7 @@ class LineTracer:
         while True:
             if not self.robot.step():
                 return
-            self.robot.set_wheel_speeds(-3, -3)
+            self.robot.set_wheel_speeds(-2.5, -2.5)
 
             flags = self.robot.read_line_sensors('right')
             if sum(flags) >= threshold:
