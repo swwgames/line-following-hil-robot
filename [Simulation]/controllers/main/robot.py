@@ -33,6 +33,9 @@ class EPUCKRobot:
             sensor = self.robot.getDevice(name)
             sensor.enable(self.time_step)
             self.sensors.append(sensor)
+        
+        self.prox = self.robot.getDevice('ps7')
+        self.prox.enable(self.time_step)
 
     def step(self):
         """
@@ -77,3 +80,11 @@ class EPUCKRobot:
         Immediately stop both motors.
         """
         self.set_wheel_speeds(0.0, 0.0)
+
+    def bumped(self) -> bool:
+        """
+        Return True if the front‐facing PS sensor reading exceeds
+        the configured threshold (i.e. an object is very close).
+        """
+        val = self.prox.getValue()
+        return val > 80.0

@@ -5,15 +5,7 @@ class LineTracer:
     PID-based line tracer using EPUCKRobot with 5‐sensor front array
     and 5‐sensor side arrays for junction detection.
     """
-    def __init__(
-        self,
-        robot: EPUCKRobot,
-        base_speed=4.0,
-        max_speed=5.0,
-        kp=0.0010,
-        ki=0.0001,
-        kd=0.0050
-    ):
+    def __init__(self, robot: EPUCKRobot, base_speed=4.0, max_speed=5.0, kp=0.0010, ki=0.0001, kd=0.0050):
         self.robot = robot
         self.base_speed = base_speed
         self.max_speed = max_speed
@@ -52,11 +44,7 @@ class LineTracer:
         self.robot.set_wheel_speeds(ls, rs)
         return True
 
-    def pivot_into_direction(
-        self,
-        direction='CCW',
-        turn_speed=2.0
-    ):
+    def pivot_into_direction(self, direction='CCW', turn_speed=2.0):
         """
         Spin in place toward the given branch (left or right):
           1) clear the old line under the front array (outer sensors on the opposite side),
@@ -117,14 +105,7 @@ class LineTracer:
                 self.robot.stop()
                 break
 
-    def follow_until_junction(
-        self,
-        threshold=2,
-        debounce_steps=3,
-        stabilizing_steps=10,
-        turn_direction=None,
-        turn_speed=2.0
-    ):
+    def follow_until_junction(self, debounce_steps=3, stabilizing_steps=10, turn_direction=None, turn_speed=2.0):
         """
         Follow PID on front array until a side‐array junction is detected:
           1) stabilize on front line,
@@ -173,3 +154,50 @@ class LineTracer:
                 print("Dead end → stopping")
                 self.robot.stop()
                 return
+            
+    def drive_forward_until_bump(self):
+        """
+        Follow the line with PID control until the bump sensor trips.
+        Assumes self.robot.bumped() returns True on collision.
+        """
+        # 1) keep running your PID step()…
+        while True:
+            # if simulation ended, give up
+            if not self.step():
+                return
+            # check bump sensor after each step
+            if self.robot.bumped():
+                break
+        # 2) stop cleanly
+        self.robot.stop()
+        print("💥 Bump detected – assumed pick/drop")
+
+    def drive_backward_until_junction(
+        self,
+        threshold: int = 2,
+        debounce_steps: int = 3
+    ):
+        """
+        Reverse line-following with PID until the front-array detects a junction
+        (≥threshold sensors black), debounced for debounce_steps.
+        """
+        count = 0
+        # 1) keep backing with PID-reversal
+        while True:
+            # step simulation
+            if not self.robot.step():
+                return
+            self.robot.set_wheel_speeds(-2, -2)
+
+            # 2) check for junction under the front array
+            flags = self.robot.read_line_sensors('right')  # bool[5]
+            if sum(flags) >= threshold:
+                count += 1
+                if count >= debounce_steps:
+                    break
+            else:
+                count = 0
+
+        # 3) stop once we’ve backed onto the junction
+        self.robot.stop()
+        print("◀️  Back at junction (debounced)")

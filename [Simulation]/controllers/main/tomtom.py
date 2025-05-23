@@ -136,14 +136,15 @@ class TomTom:
                 self.heading = desired
 
             # 4) drive straight to the _next_ junction
-            print(" Driving to next junction…")
-            self.tracer.follow_until_junction(turn_direction=None)
+            if next_node.startswith('P'):
+                self.tracer.drive_forward_until_bump()
+            else:
+                self.tracer.follow_until_junction()
+
 
             # 5) update position
             self.current_node = next_node
             print(f" Arrived at {self.current_node}, heading={self.heading}")
-
-        print(f"*** Arrived at goal {goal} ***")
 
     def _rotate_heading(self, heading: str, turn: str) -> str:
         """Rotate a compass heading by 'CW' or 'CCW'."""
@@ -219,7 +220,7 @@ class TomTom:
             steps += 1
 
             # drive until the next junction
-            self.tracer.follow_until_junction(turn_direction=None)
+            self.tracer.follow_until_junction()
 
             # sense which branches exist here
             obs = self._sense_junction()
@@ -286,3 +287,39 @@ class TomTom:
         else:
             print("❌ Unable to localize uniquely")
             return None
+        
+    def _last_junction_before(self, pnode: str) -> str:
+        """
+        In our grid every P-lane node has exactly one neighbor
+        that *is* a junction.  Return that neighbor.
+        """
+        nbrs = [n for n in self.grid_map[pnode].values() if n]
+        if len(nbrs) != 1:
+            raise ValueError(f"{pnode} has {len(nbrs)} non-junction neighbors!")
+        return nbrs[0]
+
+    def perform_box_run(self, pickup: str, dropoff: str, origin: str, heading: str):
+        """
+        1) go to the last junction before `pickup`
+        2) drive forward until bump (pick up)
+        3) back up to that same junction
+        4) go to the last junction before `dropoff`
+        5) drive forward until bump (drop off)
+        6) back up to that junction
+        """
+        # —— pickup phase ——
+        print(f"→ Navigating to pickup lane {pickup}")
+        
+        self.navigate_to(origin, pickup, heading)
+        self.tracer.drive_forward_until_bump()
+        self.tracer.drive_backward_until_junction()
+
+        # —— dropoff phase ——
+        print(f"→ Navigating to dropoff lane {dropoff}")
+        cNode = self._last_junction_before(pickup)
+        self.navigate_to(cNode, dropoff, 'N')
+        self.tracer.drive_forward_until_bump()
+        self.tracer.drive_backward_until_junction()
+        self.current_node = self._last_junction_before(dropoff)
+
+        print("✅ Box run complete")
