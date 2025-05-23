@@ -47,7 +47,6 @@ class TomTom:
         Returns list of node names from current_node to goal (inclusive),
         or [] if unreachable.
         """
-        from collections import deque
 
         # all possible headings
         headings = ['N', 'E', 'S', 'W']
