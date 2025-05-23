@@ -1,106 +1,43 @@
 """
-Line Follower Controller (MicroPython - ESP32)
+Line Follower Controller (MicroPython - ESP32) - WIRELESS TCP SERVER
 
-Receives ground sensor data via UART from Webots,
+Receives ground sensor data via TCP from Webots,
 computes correction, and sends motor speeds back.
 """
 
 import struct
-from machine import Pin, UART
+from machine import Pin
 import time
-import math
+from communicator import Communicator
+from odometer import Odometer
 
-
-# === Constants ===
-HEADER = b'S'
-PACKET_TYPE = b'p'
 
 MAX_SPEED = 6.28
 BASE_SPEED = 0.4 * MAX_SPEED
 
-Kp, Ki, Kd = 2.0, 0.0, 0.05  # PID coefficients
-
-
-class Odometry:
-    def __init__(self, wheel_radius, wheel_base, ticks_per_rev):
-        self.x = 0.5
-        self.y = -0.101
-        self.theta = 1.5708
-        self.wheel_radius = wheel_radius
-        self.wheel_base = wheel_base
-        self.ticks_per_rev = ticks_per_rev
-        self.prev_ang_diff_l = 0
-        self.prev_ang_diff_r = 0
-
-    def update(self, ang_l, ang_r, delta_t):
-        if self.ticks_per_rev == 0 or self.wheel_base == 0:
-            return self.x, self.y, self.theta
-
-        ang_diff_l = ang_l - self.prev_ang_diff_l
-        ang_diff_r = ang_r - self.prev_ang_diff_r
-
-        self.prev_ang_diff_l = ang_l
-        self.prev_ang_diff_r = ang_r
-
-        wl = ang_diff_l / delta_t
-        wr = ang_diff_r / delta_t
-
-        u = self.wheel_radius / 2.0 * (wr + wl)
-        w = self.wheel_radius / self.wheel_base * (wr - wl)
-
-        delta_theta = w * delta_t
-        self.theta += delta_theta
-
-        # Normalize angle to [-π, π]
-        if self.theta >= math.pi:
-            self.theta -= 2 * math.pi
-        elif self.theta < -math.pi:
-            self.theta += 2 * math.pi
-
-        delta_x = u * math.cos(self.theta) * delta_t
-        delta_y = u * math.sin(self.theta) * delta_t
-
-        self.x += delta_x
-        self.y += delta_y
-
-        return self.x, self.y, self.theta
-
+Kp, Ki, Kd = 2.0, 0.0, 0.05
 
 class LineFollowerController:
-    def __init__(self):
-        # PID state
+    def __init__(self, communicator: Communicator):
+        self.com = communicator
+
         self.previous_error = 0.0
         self.integral = 0.0
 
+        self.last_odom_update_time = 0
+        self.last_encoder_sim_time = 0
         # Initialize LEDs
-        self.led_board = Pin(2, Pin.OUT)
         self.led_yellow = Pin(4, Pin.OUT)
         self.led_blue = Pin(23, Pin.OUT)
         self.led_green = Pin(22, Pin.OUT)
         self.led_red = Pin(21, Pin.OUT)
 
-        # Buttons
+        self.led_yellow.off()
+        self.led_blue.off()
+        self.led_green.off()
+        self.led_red.off()
+
         self.button_left = Pin(34, Pin.IN, Pin.PULL_DOWN)
-        self.button_right = Pin(35, Pin.IN, Pin.PULL_DOWN)
-
-        # Wait for user to start
-        self.wait_for_start()
-
-    def wait_for_start(self) -> None:
-        print("Click the button on the ESP32 to continue. Then, close Thonny and run the Webots simulation.")
-        while not self.button_left():
-            time.sleep(0.25)
-            self.led_board.value(not self.led_board())
-        self.uart = UART(1, 115200, tx=1, rx=3)
-
-    def read_uart_packet(self) -> tuple | None:
-        """Read and return unpacked ground sensor values from UART."""
-        if self.uart.any() >= 13:
-            if self.uart.read(1) == HEADER:
-                data = self.uart.read(12)
-                if len(data) == 12:
-                    return struct.unpack('!fff', data)
-        return None
 
     def update_leds(self, gs_left: float, gs_center: float, gs_right: float) -> None:
         """Set LED indicators based on sensor values."""
@@ -127,76 +64,73 @@ class LineFollowerController:
         self.previous_error = error
         return correction
 
-    def send_motor_speeds(self, left_speed: float, right_speed: float) -> None:
-        """Send motor speeds to Webots via UART."""
-        packet = PACKET_TYPE + struct.pack('!ff', right_speed, left_speed)
-        self.uart.write(HEADER + packet)
-
     def clamp(self, value: float, min_val: float, max_val: float) -> float:
         return max(min(value, max_val), min_val)
 
     def run(self) -> None:
         """Main control loop."""
-        odom = Odometry(wheel_radius=0.0205, wheel_base=0.052, ticks_per_rev=72)
+        if not self.com.client_socket:
+            print("No client connected. Aborting run.")
+            return
+
+        odom = Odometer(wheel_radius=0.0205, wheel_base=0.052, ticks_per_rev=72)
+
+        self.last_odom_update_time = time.ticks_ms()
+
         while True:
-            result = read_packet(self.uart)
-            if result:
-                packet_type, data = result
-                if packet_type == b'g':
-                    gs_right, gs_center, gs_left = struct.unpack('!fff', data)
+            try:
+                result = self.com.read_packet_from_socket(timeout_ms=100)
+                if result:
+                    packet_type, data = result
+                    if packet_type == b'g':
+                        gs_right, gs_center, gs_left = struct.unpack('!fff', data)
 
-                    self.update_leds(gs_left, gs_center, gs_right)
-                    position = self.compute_position(gs_left, gs_center, gs_right)
-                    correction = self.compute_pid(position)
+                        self.update_leds(gs_left, gs_center, gs_right)
+                        position = self.compute_position(gs_left, gs_center, gs_right)
+                        correction = self.compute_pid(position)
 
-                    left_speed = self.clamp(BASE_SPEED - correction, -MAX_SPEED, MAX_SPEED)
-                    right_speed = self.clamp(BASE_SPEED + correction, -MAX_SPEED, MAX_SPEED)
+                        left_speed = self.clamp(BASE_SPEED - correction, -MAX_SPEED, MAX_SPEED)
+                        right_speed = self.clamp(BASE_SPEED + correction, -MAX_SPEED, MAX_SPEED)
 
-                    motor_payload = struct.pack('!ff', right_speed, left_speed)
-                    send_packet(self.uart, b'm', motor_payload)
-                elif packet_type == b'e':
-                    ang_l, ang_r = struct.unpack('!ff', data)
-                    x, y, theta = odom.update(ang_l, ang_r, delta_t=0.02)
+                        motor_payload = struct.pack('!ff', right_speed, left_speed)
 
-                    messages_payload = struct.pack('!fff', x, y, theta)
-                    send_packet(self.uart, b't', messages_payload)
+                        self.com.send_packet_to_socket( b'm', motor_payload)
+                    elif packet_type == b'e':
 
-            time.sleep(0.02)
+                        sim_time_encoders, ang_l, ang_r = struct.unpack('!dff', data)
 
-def read_packet(uart, timeout_ms=100):
-    start = time.ticks_ms()
-    while time.ticks_diff(time.ticks_ms(), start) < timeout_ms:
-        if uart.any():
-            byte = uart.read(1)
-            if byte == HEADER:
-                while uart.any() < 2 and time.ticks_diff(time.ticks_ms(), start) < timeout_ms:
-                    pass
-                if uart.any() < 2:
-                    continue
+                        if 0 <= self.last_encoder_sim_time < sim_time_encoders:
+                            actual_delta_t_sec = sim_time_encoders - self.last_encoder_sim_time
+                        else:
+                            actual_delta_t_sec = 0.02
 
-                packet_type = uart.read(1)
-                size_byte = uart.read(1)
-                size = size_byte[0]
+                        self.last_encoder_sim_time = sim_time_encoders
 
-                while uart.any() < size and time.ticks_diff(time.ticks_ms(), start) < timeout_ms:
-                    pass
-                if uart.any() < size:
-                    continue
+                        x, y, theta = odom.update(ang_l, ang_r, delta_t=actual_delta_t_sec)
 
-                data = uart.read(size)
-                if len(data) == size:
-                    return packet_type, data
+                        messages_payload = struct.pack('!fff', x, y, theta)
+                        self.com.send_packet_to_socket(b't', messages_payload)
 
-    return None
+                    time.sleep_ms(10)
 
-def send_packet(uart, packet_type: bytes, payload: bytes):
-    size = len(payload)
-    packet = HEADER + packet_type + bytes([size]) + payload
-    uart.write(packet)
+            except OSError as e:
+                print(f"Socket error: {e}. Client likely disconnected.")
+                self.com.client_socket.close()
+                self.com.client_socket = None
+
+                print("Restart ESP32 and Webots controller to reconnect.")
+                break
+            except Exception as e:
+                print(f"An error occurred: {e}")
+                time.sleep(1)
 
 def main() -> None:
-    controller = LineFollowerController()
-    controller.run()
+    com = Communicator()
+    controller = LineFollowerController(com)
+    if com.client_socket:
+        controller.run()
+    else:
+        print("Failed to establish client connection.")
 
 
 if __name__ == '__main__':
