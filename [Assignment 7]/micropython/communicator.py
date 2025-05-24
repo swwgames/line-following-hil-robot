@@ -55,10 +55,8 @@ class Communicator:
                 if not chunk:
                     return None
                 data += chunk
-        except socket.timeout:
-            return None
         except OSError as e:
-            print(f"read_bytes_from_socket error: {e}")
+            #print(f"read_bytes_from_socket error: {e}")
             return None
         finally:
             self.client_socket.settimeout(1.0)
