@@ -55,6 +55,7 @@ class Deque:
     def __len__(self):
         return len(self._data)
 
+
 class TomTom:
     def __init__(self, tracer):
         self.tracer = tracer

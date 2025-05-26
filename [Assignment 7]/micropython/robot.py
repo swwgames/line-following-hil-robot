@@ -28,15 +28,28 @@ class EPUCKRobot:
                 continue
             packet_type, data = result
             if packet_type == b'g':
-                values = list(struct.unpack('!14f', data))
-                self.last_ground_sensor_values['left'] = values[0:5]
-                self.last_ground_sensor_values['front'] = values[5:10]
-                self.last_ground_sensor_values['right'] = values[10:15]
+                # Unpack 15 ground sensor values as 2-byte integers, plus step as 4-byte unsigned int
+                unpacked = struct.unpack('!14hI', data)
+
+                # Convert to float by dividing back (e.g., if scaled by 100)
+                float_values = [v / 10 for v in unpacked[:15]]
+
+                self.last_ground_sensor_values['left'] = float_values[0:5]
+                self.last_ground_sensor_values['front'] = float_values[5:10]
+                self.last_ground_sensor_values['right'] = float_values[10:15]
+
+                step = unpacked[-1]
+                print(f'step {step} received.')
                 updated = True
+
             elif packet_type == b'e':
-                _, enc_left, enc_right = struct.unpack('!dff', data)
-                self.last_encoder_values = [enc_left, enc_right]
+                # Unpack: time as unsigned int (ms), encoders as 2-byte signed integers
+                scaled_time, enc_left, enc_right = struct.unpack('!Ihh', data)
+
+                sim_time = scaled_time / 1000  # convert ms to seconds
+                self.last_encoder_values = [enc_left / 100, enc_right / 100]
                 updated = True
+
             elif packet_type == b't':
                 self.last_odometry = struct.unpack('!fff', data)
                 updated = True
@@ -54,7 +67,7 @@ class EPUCKRobot:
         return self.last_encoder_values
 
     def set_wheel_speeds(self, left_speed, right_speed):
-        payload = struct.pack('!ff', right_speed, left_speed)
+        payload = struct.pack('!hh', int(right_speed * 100), int(left_speed * 100))
         self.com.send_packet_to_socket(b'm', payload)
 
     def stop(self):
