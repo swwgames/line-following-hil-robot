@@ -39,14 +39,24 @@ grid_map = {
 
 class TomTom:
     def __init__(self, tracer):
+        """Initialize the TomTom navigation system with a tracer and a grid map.
+
+        Args:
+            tracer (obj): An instance of the LineTracer class for driving.
+            grid_map (dict): The map of the grid with node connections.
+        """
+
         self.tracer = tracer
         self.grid_map = grid_map
 
     def plan_route(self, goal: str) -> List[str]:
-        """
-        0–1 BFS on (node,heading) states to minimize number of 90° turns.
-        Returns list of node names from current_node to goal (inclusive),
-        or [] if unreachable.
+        """Plan a route from the current node to the goal node using a breadth-first search. Also minimizes 90° turns.
+
+        Args:
+            goal (str): The name of the goal node.
+
+        Returns:
+            List[str]: A list of node names from the current node to the goal (inclusive), or an empty list if the goal is unreachable.
         """
 
         # all possible headings
@@ -113,11 +123,15 @@ class TomTom:
         return [node for node, _ in seq]
 
     def plan_route_astar(self, goal: str) -> List[str]:
+        """Plan a route from the current node to the goal node using A* search algorithm.
+
+        Args:
+            goal (str): The name of the goal node.
+
+        Returns:
+            List[str]: A list of node names from the current node to the goal (inclusive), or an empty list if the goal is unreachable.
         """
-        A* search on (node,heading) states to minimize 90° turns.
-        Returns list of node names from current_node to goal (inclusive),
-        or [] if unreachable.
-        """
+
         # 1) helper: map node names to (x,y) coords on a grid
         def coords(n: str):
             # letters A–E → rows 0–4, digits 1–6 → cols 0–5, P1–P8 above E-row
@@ -131,7 +145,7 @@ class TomTom:
                 col = int(n[1]) - 1
             return row, col
 
-        # 2) heuristic: minimal turns to face “best” cardinal toward goal
+        # 2) heuristic: minimal turns to face best cardinal toward goal
         def heuristic(state):
             node, heading = state
             r0, c0 = coords(node)
@@ -200,12 +214,24 @@ class TomTom:
         return []
 
     def _relative_turn(self, *args) -> Union[None, str, Tuple[str, str]]:
+        """Compute the relative turn direction from the current heading to the desired heading.
+
+        Args:
+            *args: either one or two arguments:
+                - if one argument, it is the desired heading
+                - if two arguments, the first is the current heading and the second is the desired heading
+
+        Raises:
+            TypeError: if the number of arguments is not 1 or 2.
+
+        Returns:
+            Union[None, str, Tuple[str, str]]: 
+                - None if no turn is needed (same heading)
+                - 'CW' for a single clockwise turn
+                - 'CCW' for a single counter-clockwise turn
+                - ('CW', 'CW') for a 180° turn (two clockwise turns)
         """
-        Compute minimal 90° turn(s) to go from `current`→`desired`.
-        Backward-compatible:
-          _relative_turn(desired)      uses self.heading as current
-          _relative_turn(current, desired)
-        """
+
         order = ['N', 'E', 'S', 'W']
         # unpack args
         if len(args) == 1:
@@ -229,6 +255,17 @@ class TomTom:
         return ('CW', 'CW')
 
     def navigate_to(self, origin: str, goal: str, start_heading: str = 'N'):
+        """Navigate from the origin node to the goal node, starting with a given heading.
+
+        Args:
+            origin (str): The name of the starting node.
+            goal (str): The name of the goal node.
+            start_heading (str): The initial heading of the robot, default is 'N'.
+
+        Raises:
+            RuntimeError: If the next node is not found in the grid map.
+        """
+        
         self.current_node = origin
         self.heading = start_heading
 
@@ -298,7 +335,16 @@ class TomTom:
             print(f" Arrived at {self.current_node}, heading={self.heading}")
 
     def _rotate_heading(self, heading: str, turn: str) -> str:
-        """Rotate a compass heading by 'CW' or 'CCW'."""
+        """Rotate the heading based on the turn direction.
+
+        Args:
+            heading (str): The current heading ('N', 'E', 'S', 'W').
+            turn (str): The turn direction ('CW' for clockwise, 'CCW' for counter-clockwise).
+
+        Returns:
+            str: The new heading after the turn.
+        """
+
         order = ['N','E','S','W']
         i = order.index(heading)
         if turn == 'CW':
@@ -308,10 +354,12 @@ class TomTom:
         return heading
 
     def _sense_junction(self) -> Dict[str,bool]:
+        """Sense the junction by checking the line sensors. This is to validate the robot's position after each junction.
+
+        Returns:
+            Dict[str,bool]: A dictionary with keys 'front', 'left', 'right' indicating whether each direction has a line detected (True) or not (False).
         """
-        Return what the robot sees at the current junction:
-          'front','left','right' → True if that branch exists.
-        """
+
         flags = {}
         # front = any line under front array?
         flags['front'] = any(self.tracer.robot.read_line_sensors('front'))
@@ -322,10 +370,17 @@ class TomTom:
         return flags
 
     def _match_observation(self,node: str, heading: str, obs: Dict[str,bool]) -> bool:
+        """Check if the observed branches at a junction match the expected branches in the grid map.
+
+        Args:
+            node (str): The current node name.
+            heading (str): The current heading ('N', 'E', 'S', 'W').
+            obs (Dict[str,bool]): A dictionary with keys 'front', 'left', 'right' indicating whether each direction has a line detected (True) or not (False).
+
+        Returns:
+            bool: True if the observed branches match the expected branches, False otherwise.
         """
-        Given a map node & heading candidate, return True if its
-        map‐neighbors match the observed front/left/right availability.
-        """
+
         for rel_dir, saw in obs.items():
             # absolute direction of that relative branch
             if rel_dir == 'front':
@@ -340,12 +395,16 @@ class TomTom:
         return True
 
     def locate_self(self, max_steps: int = 50, known_heading: Optional[str] = None) -> Optional[Tuple[str,str]]:
+        """Locate the robot's current position and heading in the grid map by following branches and observing junctions.
+
+        Args:
+            max_steps (int): The maximum number of steps to take while trying to localize, default is 50.
+            known_heading (Optional[str]): The current heading of the robot ('N', 'E', 'S', 'W') or None if unknown.
+
+        Returns:
+            Optional[Tuple[str,str]]: A tuple containing the node name and heading if successfully localized, or None if unable to localize uniquely.
         """
-        Drive through junctions until the robot deduces its exact
-        (node, heading).  If you know your initial heading, pass it
-        in via known_heading to filter candidates immediately.
-        Returns that pair, or None if inconclusive.
-        """
+
         # 1) initialize candidate set
         if known_heading in ('N','E','S','W'):
             # only these headings
@@ -433,24 +492,44 @@ class TomTom:
             return None
         
     def _last_junction_before(self, pnode: str) -> str:
+        """Find the last junction before a pickup or dropoff node.
+
+        Args:
+            pnode (str): The pickup or dropoff node name.
+
+        Raises:
+            ValueError: If the pickup or dropoff node has more than one non-junction neighbor.
+
+        Returns:
+            str: The name of the last junction before the pickup or dropoff node.
         """
-        In our grid every P-lane node has exactly one neighbor
-        that is a junction. Return that neighbor.
-        """
+
         nbrs = [n for n in self.grid_map[pnode].values() if n]
         if len(nbrs) != 1:
             raise ValueError(f"{pnode} has {len(nbrs)} non-junction neighbors!")
         return nbrs[0]
 
     def perform_box_run(self, pickup: str, dropoff: str, origin: str, heading: str):
+        """Perform a box run by navigating to the pickup lane, picking up the box, navigating to the dropoff lane, and dropping off the box.
+
+        Args:
+            pickup (str): The name of the pickup lane node.
+            dropoff (str): The name of the dropoff lane node.
+            origin (str): The name of the origin node where the run starts.
+            heading (str): The initial heading of the robot ('N', 'E', 'S', 'W').
+
+        Steps:
+            1) go to the last junction before `pickup`
+            2) drive forward until bump (pick up)
+            3) back up to that same junction
+            4) go to the last junction before `dropoff`
+            5) drive forward until bump (drop off)
+            6) back up to that junction
+
+        Raises:
+            ValueError: If the pickup or dropoff node is not a valid pickup or dropoff lane.
         """
-        1) go to the last junction before `pickup`
-        2) drive forward until bump (pick up)
-        3) back up to that same junction
-        4) go to the last junction before `dropoff`
-        5) drive forward until bump (drop off)
-        6) back up to that junction
-        """
+        
         # —— pickup phase ——
         print(f"→ Navigating to pickup lane {pickup}")
         
