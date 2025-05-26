@@ -8,7 +8,7 @@ class LineTracer:
     def step(self):
         if not self.robot.step():
             return False
-        
+
         # Step the robot - compute PID control to follow the line
         error = self.pid.compute_error(self.robot)
         corr = self.pid.compute_control(self.robot, error)
@@ -31,12 +31,12 @@ class LineTracer:
         # determine spin direction and which sensors to monitor
         if direction == 'CCW':
             ls, rs = -turn_speed, turn_speed
-            old_idxs = [3, 4]   # right sensors must clear first
-            new_idxs = [0, 1]   # then left sensors must see the branch
+            old_idxs = [3, 4]  # right sensors must clear first
+            new_idxs = [0, 1]  # then left sensors must see the branch
         elif direction == 'CW':
             ls, rs = turn_speed, -turn_speed
-            old_idxs = [0, 1]   # left sensors must clear first
-            new_idxs = [3, 4]   # then right sensors must see the branch
+            old_idxs = [0, 1]  # left sensors must clear first
+            new_idxs = [3, 4]  # then right sensors must see the branch
         else:
             raise ValueError("direction must be 'CCW' or 'CW'")
 
@@ -47,9 +47,9 @@ class LineTracer:
         clear_count = 0
         DEBOUNCE = 3
         while True:
-            if not self.robot.step(): 
+            if not self.robot.step():
                 return
-            
+
             vals = self.robot.read_ground_sensors('front')
             if all(vals[i] >= self.robot.line_threshold for i in old_idxs):
                 clear_count += 1
@@ -63,7 +63,7 @@ class LineTracer:
         while True:
             if not self.robot.step():
                 return
-            
+
             vals = self.robot.read_ground_sensors('front')
             for i in new_idxs:
                 if vals[i] < self.robot.line_threshold:
@@ -76,7 +76,7 @@ class LineTracer:
         while True:
             if not self.robot.step():
                 return
-            
+
             vals = self.robot.read_ground_sensors('front')
             if vals[check_idx] >= self.robot.line_threshold:
                 self.robot.stop()
@@ -89,8 +89,8 @@ class LineTracer:
           2) debounce side‐array detection,
           3) stop the robot
         """
-        debounce_steps=3
-        stabilizing_steps=10
+        debounce_steps = 3
+        stabilizing_steps = 10
 
         # 1) stabilize
         for _ in range(stabilizing_steps):
@@ -102,8 +102,8 @@ class LineTracer:
         while True:
             if not self.step():
                 return
-            
-            left_mid  = self.robot.read_line_sensors('left')[2]
+
+            left_mid = self.robot.read_line_sensors('left')[2]
             right_mid = self.robot.read_line_sensors('right')[2]
             if left_mid or right_mid:
                 count += 1
@@ -122,7 +122,9 @@ class LineTracer:
         # 3) stop the robot if it has to turn
         if 'F' not in dirs:
             self.robot.stop()
-            
+        print(f'return dirs: {dirs}')
+        return dirs
+
     def drive_forward_until_bump(self):
         """
         Follow the line with PID control until the bump sensor trips.

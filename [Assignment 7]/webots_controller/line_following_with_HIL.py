@@ -29,7 +29,7 @@ def main():
             com.send_packet_to_socket(b'e', encoder_payload)
 
             # Receive motor commands or other data
-            response = com.receive_packet_from_socket(timeout_sec=1.0) # Using a small timeout for non-blocking behavior
+            response = com.receive_packet_from_socket(timeout_sec=0.4)
             if response:
                 packet_type, data = response
                 if packet_type == b'm':
@@ -38,6 +38,9 @@ def main():
                 elif packet_type == b't':
                     x, y, theta = struct.unpack('!fff', data)
                     print(f'ESP32 Odom -> x: {x:.3f}, y: {y:.3f}, theta: {theta:.3f}')
+                elif packet_type == b's':
+                    print('Skip step, gathering sensor data')
+                    continue
 
         except socket.timeout:
             pass

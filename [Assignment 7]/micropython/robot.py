@@ -21,8 +21,10 @@ class EPUCKRobot:
     def step(self):
         updated = False
         for _ in range(3):
-            result = self.com.read_packet_from_socket(timeout_ms=5)
+            result = self.com.read_packet_from_socket(timeout_ms=50)
             if not result:
+                packet = struct.pack('!fff', 0.0, 0.0, 0.0)
+                self.com.send_packet_to_socket(b's', packet)
                 continue
             packet_type, data = result
             if packet_type == b'g':

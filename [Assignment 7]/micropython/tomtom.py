@@ -67,11 +67,10 @@ class TomTom:
         or [] if unreachable.
         """
 
-
         # all possible headings
         headings = ['N', 'E', 'S', 'W']
         start = (self.current_node, self.heading)
-        print(start)
+
         # initialize distances
         INF = float('inf')
         dist = {(n, h): INF for n in self.grid_map for h in headings}
@@ -182,29 +181,49 @@ class TomTom:
 
             # 2) compute relative turn(s) from self.heading → desired
             turns = self._relative_turn(desired)
-            print(f"At {self.current_node}, heading={self.heading} → next={next_node}, desired={desired}, turns={turns}")
+            print(
+                f"At {self.current_node}, heading={self.heading} → next={next_node}, desired={desired}, turns={turns}")
 
             # 3) pivot if needed
-            if turns is None:
-                pass
-            else:
-                # could be single or double 90°’s
-                if isinstance(turns, tuple):
-                    for t in turns:
-                        print(f" Pivot: {t}")
-                        self.tracer.pivot_into_direction(direction=t)
-                else:
-                    print(f" Pivot: {turns}")
-                    self.tracer.pivot_into_direction(direction=turns)
+            if turns is not None:
+                for t in (turns if isinstance(turns, tuple) else (turns,)):
+                    self.tracer.pivot_into_direction(direction=t)
 
-                # now we are already aligned with the new branch
+                # now we’re aligned with the branch
                 self.heading = desired
 
             # 4) drive straight to the next junction
             if next_node.startswith('P'):
                 self.tracer.drive_forward_until_bump()
             else:
-                self.tracer.follow_until_junction()
+                junction = self.tracer.follow_until_junction()
+
+                expected = set()
+
+                for rel in ('F', 'L', 'R'):
+                    if rel == 'F':
+                        abs_rel = self.heading
+                    elif rel == 'L':
+                        abs_rel = self._rotate_heading(self.heading, 'CCW')
+                    else:  # 'right'
+                        abs_rel = self._rotate_heading(self.heading, 'CW')
+
+                    if self.grid_map[next_node][abs_rel] is not None:
+                        expected.add(rel)
+
+                seen = set(junction)
+                if seen != expected:
+                    print(f"Junction validation failed at {next_node}: "f"expected {expected}, saw {seen}")
+
+                    loc = self.locate_self(known_heading=self.heading)
+                    if loc:
+                        self.current_node, self.heading = loc
+                        print(f"Re-localised to {self.current_node}, heading={self.heading}, ""replanning…")
+                        return self.navigate_to(self.current_node, goal, self.heading)
+                    else:
+                        print("Could not re-localize; aborting navigation")
+                        self.tracer.robot.stop()
+                        return
 
             # 5) update position
             self.current_node = next_node
@@ -212,12 +231,12 @@ class TomTom:
 
     def _rotate_heading(self, heading: str, turn: str) -> str:
         """Rotate a compass heading by 'CW' or 'CCW'."""
-        order = ['N','E','S','W']
+        order = ['N', 'E', 'S', 'W']
         i = order.index(heading)
         if turn == 'CW':
-            return order[(i+1)%4]
+            return order[(i + 1) % 4]
         if turn == 'CCW':
-            return order[(i-1)%4]
+            return order[(i - 1) % 4]
         return heading
 
     def _sense_junction(self):
@@ -229,15 +248,12 @@ class TomTom:
         # front = any line under front array?
         flags['front'] = any(self.tracer.robot.read_line_sensors('front'))
         # left  = any line under left array?
-        flags['left']  = any(self.tracer.robot.read_line_sensors('left'))
+        flags['left'] = any(self.tracer.robot.read_line_sensors('left'))
         # right = any line under right array?
         flags['right'] = any(self.tracer.robot.read_line_sensors('right'))
         return flags
 
-    def _match_observation(self,
-                           node: str,
-                           heading: str,
-                           obs) -> bool:
+    def _match_observation(self, node: str, heading: str, obs) -> bool:
         """
         Given a map node & heading candidate, return True if its
         map‐neighbors match the observed front/left/right availability.
@@ -255,11 +271,7 @@ class TomTom:
                 return False
         return True
 
-    def locate_self(
-        self,
-        max_steps: int = 50,
-        known_heading = None
-    ):
+    def locate_self(self, max_steps: int = 50, known_heading = None):
         """
         Drive through junctions until the robot deduces its exact
         (node, heading).  If you know your initial heading, pass it
@@ -267,7 +279,7 @@ class TomTom:
         Returns that pair, or None if inconclusive.
         """
         # 1) initialize candidate set
-        if known_heading in ('N','E','S','W'):
+        if known_heading in ('N', 'E', 'S', 'W'):
             # only these headings
             candidates = [(node, known_heading)
                           for node in self.grid_map]
@@ -276,7 +288,7 @@ class TomTom:
             candidates = [
                 (node, h)
                 for node in self.grid_map
-                for h in ('N','E','S','W')
+                for h in ('N', 'E', 'S', 'W')
             ]
         steps = 0
 
@@ -292,9 +304,9 @@ class TomTom:
 
             # 2) eliminate any candidate whose map‐pattern are not equal to obs
             candidates = [
-                (node,head)
-                for node,head in candidates
-                if self._match_observation(node,head,obs)
+                (node, head)
+                for node, head in candidates
+                if self._match_observation(node, head, obs)
             ]
             if len(candidates) <= 1:
                 break
@@ -306,11 +318,11 @@ class TomTom:
                     continue
                 # count how many of the remaining candidates actually have this branch
                 count = sum(
-                    1 for (n,h) in candidates
+                    1 for (n, h) in candidates
                     if self.grid_map[n][
-                        (h if rel=='front' else
-                         self._rotate_heading(h,'CCW') if rel=='left' else
-                         self._rotate_heading(h,'CW'))
+                        (h if rel == 'front' else
+                         self._rotate_heading(h, 'CCW') if rel == 'left' else
+                         self._rotate_heading(h, 'CW'))
                     ] is not None
                 )
                 if 0 < count < best_score:
@@ -332,7 +344,7 @@ class TomTom:
 
             # 5) advance each surviving candidate along that branch
             new_cands = []
-            for node,head in candidates:
+            for node, head in candidates:
                 new_h = self._rotate_heading(head, rel_turn) if rel_turn else head
                 # pick the neighbor in that direction
                 if best_rel == 'front':
@@ -346,12 +358,12 @@ class TomTom:
         # done
         if len(candidates) == 1:
             node, head = candidates[0]
-            print(f"✅ Located at {node}, heading={head}")
+            print(f"Located at {node}, heading={head}")
             return node, head
         else:
-            print("❌ Unable to localize uniquely")
+            print("Unable to localize uniquely")
             return None
-        
+
     def _last_junction_before(self, pnode: str) -> str:
         """
         In our grid every P-lane node has exactly one neighbor
@@ -373,7 +385,7 @@ class TomTom:
         """
         # —— pickup phase ——
         print(f"→ Navigating to pickup lane {pickup}")
-        
+
         self.navigate_to(origin, pickup, heading)
         self.tracer.drive_backward_until_junction()
 
