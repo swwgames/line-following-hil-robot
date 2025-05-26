@@ -1,15 +1,26 @@
 class LineTracer:
     def __init__(self, pid, robot):
+        """Initialize the class with a valid PID controller and a robot instance.
+
+        Args:
+            pid (obj): existing PID instance
+            robot (obj): existing robot instance
+        """
+
         self.robot = robot
         self.pid = pid
         self.base_speed = 4.0
         self.max_speed = 5.0
 
-    def step(self):
+    def step(self): 
+        """Step the robot. Computes PID control and sets wheel speeds.
+
+        Returns:
+            bool: wether or not the robot is able to step.
+        """
         if not self.robot.step():
             return False
         
-        # Step the robot - compute PID control to follow the line
         error = self.pid.compute_error(self.robot)
         corr = self.pid.compute_control(self.robot, error)
         ls = max(-self.max_speed, min(self.max_speed, self.base_speed + corr))
@@ -19,12 +30,21 @@ class LineTracer:
         return True
 
     def pivot_into_direction(self, direction='CCW', turn_speed=2.0):
+        """Spin in place toward the given direction (clockwise or counterclockwise), with the given turn speed.
+
+        Steps:
+            1) clear the old line under the front array (outer sensors on the opposite side)
+            2) wait until both new‐branch sensors see black at least once (outer sensors on turn side)
+            3) wait until the adjacent center-array sensor reads white, which means the center sensor is on the line
+
+        Args:
+            direction (str): 'CCW' or 'CW'.
+            turn_speed (float): speed of the turn, default is 2.0.
+
+        Raises:
+            ValueError: if direction is not 'CCW' or 'CW'.
         """
-        Spin in place toward the given direction (left or right):
-          1) clear the old line under the front array (outer sensors on the opposite side),
-          2) detect the new direction line under the front array (outer sensors on turn side),
-          3) finally lock the center sensor on the new line.
-        """
+
         # stop any forward/PID motion
         self.robot.stop()
 
@@ -43,7 +63,7 @@ class LineTracer:
         # start spinning
         self.robot.set_wheel_speeds(ls, rs)
 
-        # 1) wait until old‐line sensors clear
+        # 1) clear the old line under the front array
         clear_count = 0
         DEBOUNCE = 3
         while True:
@@ -83,21 +103,27 @@ class LineTracer:
                 break
 
     def follow_until_junction(self):
+        """Follow PID on front array until a side‐array junction is detected
+
+        Steps:
+            1) stabilize on front line first to prevent a junction detection from a bad starting angle
+            2) detect and debounce side-array junctions with side array sensors
+            3) if the junction is a dead end, stop the robot
+            4) return the detected directions and hand control over to the caller
+
+        Returns:
+            list: possible directions at the junction, e.g. ['L', 'F', 'R'].
         """
-        Follow PID on front array until a side‐array junction is detected:
-          1) stabilize on front line,
-          2) debounce side‐array detection,
-          3) stop the robot
-        """
+
         debounce_steps=3
         stabilizing_steps=10
 
-        # 1) stabilize
+        # 1) stabilize on front line
         for _ in range(stabilizing_steps):
             if not self.step():
                 return
 
-        # 2) debounce branch‐center detection on either side
+        # 2) detect and debounce side-array junctions with side array sensors
         count = 0
         while True:
             if not self.step():
@@ -119,16 +145,16 @@ class LineTracer:
             else:
                 count = 0
 
-        # 3) stop the robot if it has to turn
+        # 3) if the junction is a dead end, stop the robot
         if 'F' not in dirs:
             self.robot.stop()
 
+        # 4) return the detected directions and hand control over to the caller
         return dirs    
         
     def drive_forward_until_bump(self):
-        """
-        Follow the line with PID control until the bump sensor trips.
-        """
+        """Follow the line with PID control until the bump sensor trips. Then return to caller"""
+
         while True:
             if not self.step():
                 return
@@ -140,9 +166,13 @@ class LineTracer:
         print("Bump detected, assumed pick/drop")
 
     def drive_backward_until_junction(self, threshold: int = 2, debounce_steps: int = 3):
+        """Reverse the robot until the right side array detects a junction
+
+        Args:
+            threshold (int): number of sensors that must detect the line to consider it a junction.
+            debounce_steps (int): number of consecutive steps with the line detected to confirm the junction.
         """
-        Reverse the robot until the right side array detects a junction
-        """
+
         count = 0
         while True:
             if not self.robot.step():
