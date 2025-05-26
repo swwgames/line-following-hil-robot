@@ -1,3 +1,4 @@
+import heapq
 from collections import deque
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -111,6 +112,93 @@ class TomTom:
         # return only the node names
         return [node for node, _ in seq]
 
+    def plan_route_astar(self, goal: str) -> List[str]:
+        """
+        A* search on (node,heading) states to minimize 90° turns.
+        Returns list of node names from current_node to goal (inclusive),
+        or [] if unreachable.
+        """
+        # 1) helper: map node names to (x,y) coords on a grid
+        def coords(n: str):
+            # letters A–E → rows 0–4, digits 1–6 → cols 0–5, P1–P8 above E-row
+            if n.startswith('P'):
+                # map P1…P4 to row -1, P5…P8 to row 6 (optional)
+                i = int(n[1:]) - 1
+                row = -1 if i < 4 else 6
+                col = i % 4 + (0 if row==-1 else 2)
+            else:
+                row = ord(n[0]) - ord('A')
+                col = int(n[1]) - 1
+            return row, col
+
+        # 2) heuristic: minimal turns to face “best” cardinal toward goal
+        def heuristic(state):
+            node, heading = state
+            r0, c0 = coords(node)
+            rg, cg = coords(goal)
+            dr, dc = rg - r0, cg - c0
+            if abs(dr) > abs(dc):
+                desired = 'S' if dr>0 else 'N'
+            else:
+                desired = 'E' if dc>0 else 'W'
+            turn = self._relative_turn(heading, desired)
+            if turn is None:
+                return 0
+            return len(turn) if isinstance(turn, tuple) else 1
+
+        # 3) A* setup
+        headings = ['N','E','S','W']
+        start = (self.current_node, self.heading)
+        INF = float('inf')
+        g_score = { (n,h):INF for n in self.grid_map for h in headings }
+        g_score[start] = 0
+        came_from = {}
+
+        # priority queue stores (f_score, g_score, (node,heading))
+        open_heap = [(heuristic(start), 0, start)]
+        visited = set()
+
+        while open_heap:
+            f, g, (u_node, u_head) = heapq.heappop(open_heap)
+            if (u_node, u_head) in visited:
+                continue
+            visited.add((u_node, u_head))
+
+            if u_node == goal:
+                # reconstruct path of nodes
+                path = []
+                cur = (u_node, u_head)
+                while cur in came_from:
+                    path.append(cur[0])
+                    cur = came_from[cur]
+                path.append(self.current_node)
+                return list(reversed(path))
+
+            # expand neighbors
+            for abs_dir, v in self.grid_map[u_node].items():
+                if v is None:
+                    continue
+                turns = self._relative_turn(u_head, abs_dir)
+                if turns is None:
+                    w = 0
+                    new_head = u_head
+                elif isinstance(turns, tuple):
+                    w = len(turns)
+                    new_head = abs_dir
+                else:
+                    w = 1
+                    new_head = abs_dir
+
+                tentative_g = g_score[(u_node,u_head)] + w
+                if tentative_g < g_score[(v,new_head)]:
+                    g_score[(v,new_head)] = tentative_g
+                    came_from[(v,new_head)] = (u_node, u_head)
+                    f_score = tentative_g + heuristic((v,new_head))
+                    heapq.heappush(open_heap, (f_score, tentative_g, (v,new_head)))
+
+        # no path
+        return []
+
     def _relative_turn(self, *args) -> Union[None, str, Tuple[str, str]]:
         """
         Compute minimal 90° turn(s) to go from `current`→`desired`.
@@ -144,7 +232,7 @@ class TomTom:
         self.current_node = origin
         self.heading = start_heading
 
-        path = self.plan_route(goal)
+        path = self.plan_route_astar(goal)
         if not path:
             print(f"No path from {origin} to {goal}")
             return
