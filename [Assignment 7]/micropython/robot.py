@@ -15,6 +15,7 @@ class EPUCKRobot:
             'right': [0.0] * 5,
         }
 
+        self.bumped_v = False
         self.last_encoder_values = [0.0, 0.0]
         self.last_odometry = (0.0, 0.0, 0.0)
 
@@ -28,8 +29,8 @@ class EPUCKRobot:
                 continue
             packet_type, data = result
             if packet_type == b'g':
-                # Unpack 15 ground sensor values as 2-byte integers, plus step as 4-byte unsigned int
-                unpacked = struct.unpack('!14hI', data)
+                # Unpack 15 ground sensor values as 2-byte integers
+                unpacked = struct.unpack('!14h', data)
 
                 # Convert to float by dividing back (e.g., if scaled by 100)
                 float_values = [v / 10 for v in unpacked[:15]]
@@ -37,9 +38,6 @@ class EPUCKRobot:
                 self.last_ground_sensor_values['left'] = float_values[0:5]
                 self.last_ground_sensor_values['front'] = float_values[5:10]
                 self.last_ground_sensor_values['right'] = float_values[10:15]
-
-                step = unpacked[-1]
-                print(f'step {step} received.')
                 updated = True
 
             elif packet_type == b'e':
@@ -49,7 +47,12 @@ class EPUCKRobot:
                 sim_time = scaled_time / 1000  # convert ms to seconds
                 self.last_encoder_values = [enc_left / 100, enc_right / 100]
                 updated = True
-
+            elif packet_type == b'b':
+                if data == b'1':
+                    self.bumped_v = True
+                else:
+                    self.bumped_v = False
+                updated = True
             elif packet_type == b't':
                 self.last_odometry = struct.unpack('!fff', data)
                 updated = True
@@ -74,5 +77,4 @@ class EPUCKRobot:
         self.set_wheel_speeds(0.0, 0.0)
 
     def bumped(self) -> bool:
-        # No proximity sensor in HIL by default unless simulated
-        return False  # or define a way to inject this info
+        return self.bumped_v
