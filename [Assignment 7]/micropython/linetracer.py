@@ -2,8 +2,8 @@ class LineTracer:
     def __init__(self, pid, robot):
         self.robot = robot
         self.pid = pid
-        self.base_speed = 4.0
-        self.max_speed = 5.0
+        self.base_speed = 2.0
+        self.max_speed = 3.0
 
     def step(self):
         if not self.robot.step():
