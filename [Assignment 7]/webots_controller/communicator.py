@@ -1,11 +1,20 @@
 import socket
 
 class Communicator:
-    def __init__(self):
-        self.esp32_ip = '192.168.4.1'
-        self.esp32_port = 8888
-        self.header = b'S'
-        
+    def __init__(self, esp32_ip='192.168.4.1', esp32_port=8888, header=b'S'):
+        """Initializes communication with an ESP32 device.
+
+        Args:
+            esp32_ip (str): IP address of the ESP32 device. Defaults to '192.168.4.1'.
+            esp32_port (int): Port used for communication. Defaults to 8888.
+            header (bytes): Communication header. Defaults to b'S'.
+
+        Raises:
+            Exception: If connection to ESP32 fails (if you call connect_to_esp32).
+        """
+        self.esp32_ip = esp32_ip
+        self.esp32_port = esp32_port
+        self.header = header
         self.client_socket = None
         self.connect_to_esp32()
 
@@ -22,21 +31,17 @@ class Communicator:
             print("Is the ESP32 running and did you connect your PC to its Wi-Fi AP?")
             return
 
-    def send_packet_to_socket(self, packet_type: bytes, payload: bytes):
-        """Sends a complete packet: HEADER, type, size, payload."""
-        if not self.client_socket:
-            print("No socket to send to.")
-            return
-        try:
-            payload_size = len(payload)
-            packet = self.header + packet_type + bytes([payload_size]) + payload
-            self.client_socket.sendall(packet)
-        except socket.error as e:
-            print(f"Socket send error: {e}")
-            raise
+    def read_bytes_from_socket(self, num_bytes, timeout_sec: float = 1.0):
+        """Read amount of bytes from a socket
 
-    def read_bytes_from_socket(self, num_bytes, timeout_sec=1.0):
-        """Helper to read a specific number of bytes with timeout from a blocking socket."""
+        Args:
+            num_bytes (int): number of bytes to read
+            timeout_sec (float): timeout in milliseconds
+
+        Returns:
+            data (bytes | None): bytes read, or None if no bytes
+        """
+
         data = b''
         self.client_socket.settimeout(timeout_sec)
         try:
@@ -55,8 +60,16 @@ class Communicator:
             self.client_socket.settimeout(None)
         return data
 
-    def receive_packet_from_socket(self, timeout_sec=1.0) -> tuple[bytes, bytes] | None:
-        """Reads a complete packet: HEADER, type, size, payload."""
+    def receive_packet_from_socket(self, timeout_sec: float = 1.0) -> tuple[bytes, bytes] | None:
+        """Read packet from socket
+
+        Args:
+            timeout_sec (float): timeout in milliseconds. Defaults to 1000.
+
+        Returns:
+            packet (tuple[bytes, bytes | None] | None): packet read, or None if no packet or invalid packet
+        """
+
         header_byte = self.read_bytes_from_socket(1, timeout_sec)
         if header_byte != self.header and header_byte is not None:
             print(f"Bad header received: {header_byte}")
@@ -76,3 +89,21 @@ class Communicator:
             return None
 
         return packet_type_byte, payload_data
+
+    def send_packet_to_socket(self, packet_type: bytes, payload: bytes):
+        """Send packet to socket
+
+        Args:
+            packet_type (bytes): packet type byte
+            payload (bytes): payload bytes
+        """
+        if not self.client_socket:
+            print("No socket to send to.")
+            return
+        try:
+            payload_size = len(payload)
+            packet = self.header + packet_type + bytes([payload_size]) + payload
+            self.client_socket.sendall(packet)
+        except socket.error as e:
+            print(f"Socket send error: {e}")
+            raise
