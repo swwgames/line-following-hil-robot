@@ -1,3 +1,4 @@
+import heapq
 
 grid_map = {
     "A1": {"N": "P1", "E": "A2", "S": "C1", "W": None},
@@ -35,6 +36,7 @@ grid_map = {
 }
 
 class Deque:
+    """A list-like sequence optimized for data accesses near its endpoints."""
     def __init__(self, iterable=None):
         if iterable is None:
             self._data = []
@@ -42,12 +44,15 @@ class Deque:
             self._data = list(iterable)
 
     def append(self, item):
+        """Add an element to the right side of the deque."""
         self._data.append(item)
 
     def appendleft(self, item):
+        """Add an element to the left side of the deque."""
         self._data.insert(0, item)
 
     def popleft(self):
+        """"Remove and return the leftmost element."""
         if not self._data:
             raise IndexError("popleft from an empty deque")
         return self._data.pop(0)
@@ -58,14 +63,27 @@ class Deque:
 
 class TomTom:
     def __init__(self, tracer):
+        """Initialize the TomTom navigation system with a tracer and a grid map.
+
+        Args:
+            tracer (obj): An instance of the LineTracer class for driving.
+        """
         self.tracer = tracer
         self.grid_map = grid_map
+        self.header = None
+        self.heading = None
+        self.current_node = None
 
-    def plan_route(self, goal: str):
-        """
-        0–1 BFS on (node,heading) states to minimize number of 90° turns.
-        Returns list of node names from current_node to goal (inclusive),
-        or [] if unreachable.
+
+
+    def plan_route(self, goal: str) -> list[str]:
+        """Plan a route from the current node to the goal node using a breadth-first search. Also minimizes 90° turns.
+
+        Args:
+            goal (str): The name of the goal node.
+
+        Returns:
+            List[str]: A list of node names from the current node to the goal (inclusive), or an empty list if the goal is unreachable.
         """
 
         # all possible headings
@@ -73,8 +91,8 @@ class TomTom:
         start = (self.current_node, self.heading)
 
         # initialize distances
-        INF = float('inf')
-        dist = {(n, h): INF for n in self.grid_map for h in headings}
+        inf = float('inf')
+        dist = {(n, h): inf for n in self.grid_map for h in headings}
         dist[start] = 0
 
         # to reconstruct the path
@@ -116,7 +134,7 @@ class TomTom:
             ((h, dist[(goal, h)]) for h in headings),
             key=lambda x: x[1]
         )
-        if best_cost == INF:
+        if best_cost == inf:
             return []
 
         # reconstruct the (node,heading) sequence
@@ -131,13 +149,116 @@ class TomTom:
         # return only the node names
         return [node for node, _ in seq]
 
+    def plan_route_astar(self, goal: str) -> list[str]:
+        """Plan a route from the current node to the goal node using A* search algorithm.
+
+        Args:
+            goal (str): The name of the goal node.
+
+        Returns:
+            List[str]: A list of node names from the current node to the goal (inclusive), or an empty list if the goal is unreachable.
+        """
+
+        # 1) helper: map node names to (x,y) coords on a grid
+        def coords(n: str):
+            # letters A–E → rows 0–4, digits 1–6 → cols 0–5, P1–P8 above E-row
+            if n.startswith('P'):
+                # map P1…P4 to row -1, P5…P8 to row 6 (optional)
+                i = int(n[1:]) - 1
+                row = -1 if i < 4 else 6
+                col = i % 4 + (0 if row == -1 else 2)
+            else:
+                row = ord(n[0]) - ord('A')
+                col = int(n[1]) - 1
+            return row, col
+
+        # 2) heuristic: minimal turns to face best cardinal toward goal
+        def heuristic(state):
+            node, heading = state
+            r0, c0 = coords(node)
+            rg, cg = coords(goal)
+            dr, dc = rg - r0, cg - c0
+            if abs(dr) > abs(dc):
+                desired = 'S' if dr > 0 else 'N'
+            else:
+                desired = 'E' if dc > 0 else 'W'
+            turn = self._relative_turn(heading, desired)
+            if turn is None:
+                return 0
+            return len(turn) if isinstance(turn, tuple) else 1
+
+        # 3) A* setup
+        headings = ['N', 'E', 'S', 'W']
+        start = (self.current_node, self.heading)
+        inf = float('inf')
+        g_score = {(n, h): inf for n in self.grid_map for h in headings}
+        g_score[start] = 0
+        came_from = {}
+
+        # priority queue stores (f_score, g_score, (node,heading))
+        open_heap = [(heuristic(start), 0, start)]
+        visited = set()
+
+        while open_heap:
+            f, g, (u_node, u_head) = heapq.heappop(open_heap)
+            if (u_node, u_head) in visited:
+                continue
+            visited.add((u_node, u_head))
+
+            if u_node == goal:
+                # reconstruct path of nodes
+                path = []
+                cur = (u_node, u_head)
+                while cur in came_from:
+                    path.append(cur[0])
+                    cur = came_from[cur]
+                path.append(self.current_node)
+                return list(reversed(path))
+
+            # expand neighbors
+            for abs_dir, v in self.grid_map[u_node].items():
+                if v is None:
+                    continue
+                turns = self._relative_turn(u_head, abs_dir)
+                if turns is None:
+                    w = 0
+                    new_head = u_head
+                elif isinstance(turns, tuple):
+                    w = len(turns)
+                    new_head = abs_dir
+                else:
+                    w = 1
+                    new_head = abs_dir
+
+                tentative_g = g_score[(u_node, u_head)] + w
+                if tentative_g < g_score[(v, new_head)]:
+                    g_score[(v, new_head)] = tentative_g
+                    came_from[(v, new_head)] = (u_node, u_head)
+                    f_score = tentative_g + heuristic((v, new_head))
+                    heapq.heappush(open_heap, (f_score, tentative_g, (v, new_head)))
+
+        # no path
+        return []
+
     def _relative_turn(self, *args):
+        """Compute the relative turn direction from the current heading to the desired heading.
+
+        Args:
+            *args: either one or two arguments:
+                - if one argument, it is the desired heading
+                - if two arguments, the first is the current heading and the second is the desired heading
+
+        Raises:
+            TypeError: if the number of arguments is not 1 or 2.
+
+        Returns:
+            Union[None, str, Tuple[str, str]]:
+                - None if no turn is needed (same heading)
+                - 'CW' for a single clockwise turn
+                - 'CCW' for a single counter-clockwise turn
+                - ('CW', 'CW') for a 180° turn (two clockwise turns)
         """
-        Compute minimal 90° turn(s) to go from `current`→`desired`.
-        Backward-compatible:
-          _relative_turn(desired)      uses self.heading as current
-          _relative_turn(current, desired)
-        """
+
         order = ['N', 'E', 'S', 'W']
         # unpack args
         if len(args) == 1:
@@ -158,13 +279,24 @@ class TomTom:
         if diff == 3:
             return 'CCW'
         # diff == 2
-        return ('CW', 'CW')
+        return 'CW', 'CW'
 
     def navigate_to(self, origin: str, goal: str, start_heading: str = 'N'):
+        """Navigate from the origin node to the goal node, starting with a given heading.
+
+        Args:
+            origin (str): The name of the starting node.
+            goal (str): The name of the goal node.
+            start_heading (str): The initial heading of the robot, default is 'N'.
+
+        Raises:
+            RuntimeError: If the next node is not found in the grid map.
+        """
+
         self.current_node = origin
         self.heading = start_heading
 
-        path = self.plan_route(goal)
+        path = self.plan_route_astar(goal)
         if not path:
             print(f"No path from {origin} to {goal}")
             return
@@ -223,15 +355,25 @@ class TomTom:
                         return self.navigate_to(self.current_node, goal, self.heading)
                     else:
                         print("Could not re-localize; aborting navigation")
-                        self.tracer.robot.stop()
+                        self.tracer.stop()
                         return
 
             # 5) update position
             self.current_node = next_node
             print(f" Arrived at {self.current_node}, heading={self.heading}")
 
-    def _rotate_heading(self, heading: str, turn: str) -> str:
-        """Rotate a compass heading by 'CW' or 'CCW'."""
+    @staticmethod
+    def _rotate_heading(heading: str, turn: str) -> str:
+        """Rotate the heading based on the turn direction.
+
+        Args:
+            heading (str): The current heading ('N', 'E', 'S', 'W').
+            turn (str): The turn direction ('CW' for clockwise, 'CCW' for counter-clockwise).
+
+        Returns:
+            str: The new heading after the turn.
+        """
+
         order = ['N', 'E', 'S', 'W']
         i = order.index(heading)
         if turn == 'CW':
@@ -240,25 +382,30 @@ class TomTom:
             return order[(i - 1) % 4]
         return heading
 
-    def _sense_junction(self):
+    def _sense_junction(self) -> dict[str, bool]:
+        """Sense the junction by checking the line sensors. This is to validate the robot's position after each junction.
+
+        Returns:
+            Dict[str,bool]: A dictionary with keys 'front', 'left', 'right' indicating whether each direction has a line detected (True) or not (False).
         """
-        Return what the robot sees at the current junction:
-          'front','left','right' → True if that branch exists.
-        """
-        flags = {}
-        # front = any line under front array?
-        flags['front'] = any(self.tracer.robot.read_line_sensors('front'))
-        # left  = any line under left array?
-        flags['left'] = any(self.tracer.robot.read_line_sensors('left'))
-        # right = any line under right array?
-        flags['right'] = any(self.tracer.robot.read_line_sensors('right'))
+
+        flags = {'front': any(self.tracer.robot.read_line_sensors('front')),
+                 'left': any(self.tracer.robot.read_line_sensors('left')),
+                 'right': any(self.tracer.robot.read_line_sensors('right'))}
         return flags
 
-    def _match_observation(self, node: str, heading: str, obs) -> bool:
+    def _match_observation(self, node: str, heading: str, obs: dict[str, bool]) -> bool:
+        """Check if the observed branches at a junction match the expected branches in the grid map.
+
+        Args:
+            node (str): The current node name.
+            heading (str): The current heading ('N', 'E', 'S', 'W').
+            obs (Dict[str,bool]): A dictionary with keys 'front', 'left', 'right' indicating whether each direction has a line detected (True) or not (False).
+
+        Returns:
+            bool: True if the observed branches match the expected branches, False otherwise.
         """
-        Given a map node & heading candidate, return True if its
-        map‐neighbors match the observed front/left/right availability.
-        """
+
         for rel_dir, saw in obs.items():
             # absolute direction of that relative branch
             if rel_dir == 'front':
@@ -272,13 +419,17 @@ class TomTom:
                 return False
         return True
 
-    def locate_self(self, max_steps: int = 50, known_heading = None):
+    def locate_self(self, max_steps: int = 50, known_heading: str = None) -> tuple[str, str] | None:
+        """Locate the robot's current position and heading in the grid map by following branches and observing junctions.
+
+        Args:
+            max_steps (int): The maximum number of steps to take while trying to localize, default is 50.
+            known_heading (Optional[str]): The current heading of the robot ('N', 'E', 'S', 'W') or None if unknown.
+
+        Returns:
+            Optional[Tuple[str,str]]: A tuple containing the node name and heading if successfully localized, or None if unable to localize uniquely.
         """
-        Drive through junctions until the robot deduces its exact
-        (node, heading).  If you know your initial heading, pass it
-        in via known_heading to filter candidates immediately.
-        Returns that pair, or None if inconclusive.
-        """
+
         # 1) initialize candidate set
         if known_heading in ('N', 'E', 'S', 'W'):
             # only these headings
@@ -366,24 +517,44 @@ class TomTom:
             return None
 
     def _last_junction_before(self, pnode: str) -> str:
+        """Find the last junction before a pickup or dropoff node.
+
+        Args:
+            pnode (str): The pickup or dropoff node name.
+
+        Raises:
+            ValueError: If the pickup or dropoff node has more than one non-junction neighbor.
+
+        Returns:
+            str: The name of the last junction before the pickup or dropoff node.
         """
-        In our grid every P-lane node has exactly one neighbor
-        that is a junction. Return that neighbor.
-        """
+
         nbrs = [n for n in self.grid_map[pnode].values() if n]
         if len(nbrs) != 1:
             raise ValueError(f"{pnode} has {len(nbrs)} non-junction neighbors!")
         return nbrs[0]
 
     def perform_box_run(self, pickup: str, dropoff: str, origin: str, heading: str):
+        """Perform a box run by navigating to the pickup lane, picking up the box, navigating to the dropoff lane, and dropping off the box.
+
+        Args:
+            pickup (str): The name of the pickup lane node.
+            dropoff (str): The name of the dropoff lane node.
+            origin (str): The name of the origin node where the run starts.
+            heading (str): The initial heading of the robot ('N', 'E', 'S', 'W').
+
+        Steps:
+            1) go to the last junction before `pickup`
+            2) drive forward until bump (pick up)
+            3) back up to that same junction
+            4) go to the last junction before `dropoff`
+            5) drive forward until bump (drop off)
+            6) back up to that junction
+
+        Raises:
+            ValueError: If the pickup or dropoff node is not a valid pickup or dropoff lane.
         """
-        1) go to the last junction before `pickup`
-        2) drive forward until bump (pick up)
-        3) back up to that same junction
-        4) go to the last junction before `dropoff`
-        5) drive forward until bump (drop off)
-        6) back up to that junction
-        """
+
         # —— pickup phase ——
         print(f"→ Navigating to pickup lane {pickup}")
 

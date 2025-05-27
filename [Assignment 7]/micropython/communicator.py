@@ -3,17 +3,33 @@ import socket
 import time
 
 class Communicator:
-    def __init__(self):
-        self.wifi_ssid = "ESP32_LineFollower"
-        self.wifi_password = "password123"
-        self.server_ip = '192.168.4.1'
-        self.server_port = 8888
+    def __init__(
+        self,
+        wifi_ssid: str = "ESP32_LineFollower",
+        wifi_password: str = "password123",
+        server_ip: str = '192.168.4.1',
+        server_port: int = 8888
+    ):
+        """
+        Initializes the communicator with Wi-Fi and server configuration.
+
+        Args:
+            wifi_ssid (str): The SSID for the Wi-Fi network. Defaults to "ESP32_LineFollower".
+            wifi_password (str): The Wi-Fi password. Defaults to "password123".
+            server_ip (str): The server's IP address. Defaults to '192.168.4.1'.
+            server_port (int): The server port. Defaults to 8888.
+        """
+
+        self.wifi_ssid = wifi_ssid
+        self.wifi_password = wifi_password
+        self.server_ip = server_ip
+        self.server_port = server_port
 
         self.client_socket = None
         self.client_addr = None
         self.setup_wifi()
         self.setup_server()
-        
+
         self.header = b'S'
 
     def setup_wifi(self):
@@ -43,7 +59,15 @@ class Communicator:
         self.client_socket.settimeout(1.0)
 
     def read_bytes_from_socket(self, num_bytes: int, timeout_ms: int) -> bytes | None:
-        """Read amount of bytes from a socket, return None if no bytes."""
+        """Read amount of bytes from a socket
+
+        Args:
+            num_bytes (int): number of bytes to read
+            timeout_ms (int): timeout in milliseconds
+
+        Returns:
+            data (bytes | None): bytes read, or None if no bytes
+        """
         data = b''
         start_time = time.ticks_ms()
         self.client_socket.settimeout(timeout_ms / 1000)
@@ -63,7 +87,14 @@ class Communicator:
         return data
 
     def read_packet_from_socket(self, timeout_ms=1000) -> tuple[bytes, bytes | None] | None:
-        """Read packet from socket, return None if no packet or invalid packet"""
+        """Read packet from socket
+
+        Args:
+            timeout_ms (int, optional): timeout in milliseconds. Defaults to 1000.
+
+        Returns:
+            packet (tuple[bytes, bytes | None] | None): packet read, or None if no packet or invalid packet
+        """
         header_byte = self.read_bytes_from_socket(1, timeout_ms)
         if header_byte != self.header:
             if header_byte is not None:
@@ -86,7 +117,12 @@ class Communicator:
         return packet_type_byte, payload_data
 
     def send_packet_to_socket(self, packet_type: bytes, payload: bytes):
-        """Send packet to socket."""
+        """Send packet to socket
+
+        Args:
+            packet_type (bytes): packet type byte
+            payload (bytes): payload bytes
+        """
         if not self.client_socket:
             print("No socket to send to.")
             return

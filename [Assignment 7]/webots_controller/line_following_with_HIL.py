@@ -7,35 +7,26 @@ from robot import EPUCKRobot
 
 
 def main():
-    step = 0
     epuck_robot = EPUCKRobot()
     com = Communicator()
+    bumped_prev = False
     print("Webots controller started. Attempting to connect to ESP32...")
 
     while epuck_robot.step():
         try:
-            step += 1
-            sim_current_time = epuck_robot.robot.getTime()
-
             num_ground_sensors = len(epuck_robot.sensors)
 
-            # Quantize ground sensor values (e.g., multiply by 100 to keep two decimal places)
             gs_values = [int(sensor.getValue() * 10) for sensor in epuck_robot.sensors]
-            gs_values.append(step)  # Keep step as-is, assumed to be integer
 
             # Use 2-byte signed integers ('h') instead of 4-byte floats
-            gs_payload_format = '!' + 'h' * num_ground_sensors + 'I'  # 'I' = 4-byte unsigned int for step
-
+            gs_payload_format = '!' + 'h' * num_ground_sensors
             gs_payload = struct.pack(gs_payload_format, *gs_values)
             com.send_packet_to_socket(b'g', gs_payload)
 
-            # Quantize encoder values and time
-            scaled_time = int(sim_current_time * 1000)  # ms precision
-            encoder_values = [int(epuck_robot.encoder[enc].getValue() * 100) for enc in range(2)]
-
-            # Pack time as 4-byte unsigned int, encoders as 2-byte signed ints
-            encoder_payload = struct.pack('!Ihh', scaled_time, *encoder_values)
-            com.send_packet_to_socket(b'e', encoder_payload)
+            bumped = epuck_robot.bumped()
+            if bumped != bumped_prev:
+                bumped_prev = bumped
+                com.send_packet_to_socket(b'b', b'1' if bumped else b'0')
 
             # Receive motor commands or other data
             response = com.receive_packet_from_socket(timeout_sec=0.4)
@@ -48,7 +39,7 @@ def main():
                     x, y, theta = struct.unpack('!fff', data)
                     print(f'ESP32 Odom -> x: {x:.3f}, y: {y:.3f}, theta: {theta:.3f}')
                 elif packet_type == b's':
-                    #print('Skip step, gathering sensor data')
+                    # Skip step to gather more sensor data
                     continue
 
         except socket.timeout:

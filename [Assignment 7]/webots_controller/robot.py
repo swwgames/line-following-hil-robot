@@ -2,6 +2,8 @@ from controller import Robot
 
 class EPUCKRobot:
     def __init__(self):
+        """Initialize the class with a Webots robot instance, motors, sensors, and proximity sensor."""
+
         self.time_step = 64
         self.line_threshold = 400
 
@@ -27,25 +29,28 @@ class EPUCKRobot:
         self.prox = self.robot.getDevice('ps7')
         self.prox.enable(self.time_step)
 
-        # setup wheel encoders
-        self.encoder = []
-        self.encoderNames = ['left wheel sensor', 'right wheel sensor']
-        for i in range(2):
-            self.encoder.append(self.robot.getDevice(self.encoderNames[i]))
-            self.encoder[i].enable(self.time_step)
-
     def step(self):
+        """Perform a single simulation step.
+
+        Returns:
+            bool: True if the step was successful, False if the simulation ended.
         """
-        Advance simulation by one time step.
-        Returns False if simulation ended.
-        """
+
         return self.robot.step(self.time_step) != -1
 
-    def read_ground_sensors(self, array: str = 'front'):
+    def read_ground_sensors(self, array: str = 'front') -> list:
+        """Return sensor values for one array of ground sensors.
+
+        Args:
+            array (str): 'front', 'left' or 'right'
+
+        Raises:
+            ValueError: if the array is not 'front', 'left' or 'right'.
+
+        Returns:
+            list: sensor values for the specified array.
         """
-        Return raw values from one of the three 5-sensor arrays.
-        'front', 'left' or 'right'
-        """
+
         groups = {
             'left': self.sensors[0:5],
             'front':  self.sensors[5:10],
@@ -57,37 +62,40 @@ class EPUCKRobot:
             raise ValueError("array must be 'front', 'left' or 'right'")
         return [s.getValue() for s in devs]
 
-    def read_line_sensors(self, array: str = 'front'):
+    def read_line_sensors(self, array: str = 'front') -> list:
+        """Read line sensors and return a list of boolean values indicating whether each sensor sees black.
+
+        Args:
+            array (str): 'front', 'left' or 'right'
+
+        Returns:
+            list: boolean values for each sensor in the specified array, True if the sensor sees black.
         """
-        Return booleans for one array indicating line detection.
-        (value < line_threshold).
-        :param array: 'front', 'left' or 'right'
-        """
+
         return [v < self.line_threshold for v in self.read_ground_sensors(array)]
 
-    def read_encoders(self) -> list:
-        """
-        Return raw values from one both wheel encoders.
-        """
-        return [self.encoder[i].getValue() for i in range(2)]
+    def set_wheel_speeds(self, left_speed: float, right_speed: float):
+        """Set the speed of the left and right motors.
 
-    def set_wheel_speeds(self, left_speed, right_speed):
+        Args:
+            left_speed (float): speed for the left motor.
+            right_speed (float): speed for the right motor.
         """
-        Set velocities for left and right wheel motors.
-        """
+
         self.left_motor.setVelocity(left_speed)
         self.right_motor.setVelocity(right_speed)
 
     def stop(self):
-        """
-        Immediately stop both motors.
-        """
+        """Immediately stops both motors."""
+
         self.set_wheel_speeds(0.0, 0.0)
 
     def bumped(self) -> bool:
+        """Check if the robot's proximity sensor detects an obstacle.
+
+        Returns:
+            bool: True if the proximity sensor value is greater than 80.0, indicating an obstacle is close.
         """
-        Return True if the front‐facing PS sensor reading exceeds
-        the configured threshold (i.e. an object is very close).
-        """
+
         val = self.prox.getValue()
         return val > 80.0

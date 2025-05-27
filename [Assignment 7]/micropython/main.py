@@ -5,21 +5,14 @@ Receives ground sensor data via TCP from Webots,
 computes correction, and sends motor speeds back.
 """
 
-import struct
-from machine import Pin
-import time
 from communicator import Communicator
-from odometer import Odometer
-
 from robot import EPUCKRobot
 from linetracer import LineTracer
 from tomtom import TomTom
 from pid import PID
 
 def main() -> None:
-    com = Communicator()
-
-
+    com       = Communicator()
     robot     = EPUCKRobot(com)
     pid       = PID()
     tracer    = LineTracer(pid, robot)
