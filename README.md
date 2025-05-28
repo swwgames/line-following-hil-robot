@@ -18,6 +18,7 @@ Key features:
 ```
 line-following-hil-robot/
 │   README.md
+|   requirements.txt
 ├───Assignment 7/
 │   ├───micropython/
 │   │   ├── communicator.py
