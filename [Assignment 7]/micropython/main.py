@@ -1,8 +1,9 @@
 """
 Line Follower Controller (MicroPython - ESP32) - WIRELESS TCP SERVER
 
-Receives ground sensor data via TCP from Webots,
+Receives sensor data via TCP from Webots,
 computes correction, and sends motor speeds back.
+Also sends location data such as current node and planned path back to Webots.
 """
 
 from communicator import Communicator

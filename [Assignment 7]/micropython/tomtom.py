@@ -1,4 +1,5 @@
 import heapq
+import struct
 
 grid_map = {
     "A1": {"N": "P1", "E": "A2", "S": "C1", "W": None},
@@ -73,6 +74,8 @@ class TomTom:
         self.header = None
         self.heading = None
         self.current_node = None
+
+        self.com = tracer.robot.com
 
 
 
@@ -301,7 +304,10 @@ class TomTom:
             print(f"No path from {origin} to {goal}")
             return
 
-        print(f"Route: {' → '.join(path)} (start heading={self.heading})")
+        format_str = '2s' * len(path)
+        encoded_data = [s.encode('utf-8') for s in path]
+        packed = struct.pack(format_str, *encoded_data)
+        self.com.send_packet_to_socket(b'r', packed)
 
         for next_node in path[1:]:
             # 1) figure out absolute direction (map‐north) to next_node
@@ -330,6 +336,9 @@ class TomTom:
                 self.tracer.drive_forward_until_bump()
             else:
                 junction = self.tracer.follow_until_junction()
+
+                if junction is None:
+                    return
 
                 expected = set()
 
@@ -361,6 +370,9 @@ class TomTom:
             # 5) update position
             self.current_node = next_node
             print(f" Arrived at {self.current_node}, heading={self.heading}")
+            packed = struct.pack('2s', self.current_node)
+            print(f"Sending update to robot: {packed}")
+            self.com.send_packet_to_socket(b'n', packed)
 
     @staticmethod
     def _rotate_heading(heading: str, turn: str) -> str:
@@ -568,4 +580,4 @@ class TomTom:
         self.tracer.drive_backward_until_junction()
         self.current_node = self._last_junction_before(dropoff)
 
-        print("✅ Box run complete")
+        print("Box run complete")

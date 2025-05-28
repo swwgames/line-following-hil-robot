@@ -120,13 +120,13 @@ class LineTracer:
         # 1) stabilize
         for _ in range(stabilizing_steps):
             if not self.step():
-                return
+                return None
 
         # 2) debounce branch‐center detection on either side
         count = 0
         while True:
             if not self.step():
-                return
+                return None
 
             left_mid = self.robot.read_line_sensors('left')[2]
             right_mid = self.robot.read_line_sensors('right')[2]
