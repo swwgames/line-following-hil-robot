@@ -92,9 +92,9 @@ def socket_server_logic(data_q: queue.Queue):
                         try:
                             payload = json.loads(data.decode())
                             data_q.put(payload)
-                            print(f"✅ Data received and queued: {payload}")
+                            print(f"Data received and queued: {payload}")
                         except json.JSONDecodeError:
-                            print("⚠️ Invalid JSON received")
+                            print("Invalid JSON received")
                         except Exception as e:
                             print(f"Error processing received data: {e}")
                     else:
