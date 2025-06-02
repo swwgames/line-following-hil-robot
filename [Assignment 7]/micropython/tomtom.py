@@ -331,12 +331,22 @@ class TomTom:
                 # now we’re aligned with the branch
                 self.heading = desired
 
-            # 4) drive straight to the next junction
+            # 4) drive straight to the next junction or bump
             if next_node.startswith('P'):
                 self.tracer.drive_forward_until_bump()
             else:
                 junction = self.tracer.follow_until_junction()
 
+                if junction is False:
+                    # treat as obstacle—remove next_node and replan
+                    print(f"Obstacle detected before junction {next_node}. Removing {next_node} from map and replanning.")
+                    for node, nbrs in self.grid_map.items():
+                        for d, n in nbrs.items():
+                            if n == next_node:
+                                self.grid_map[node][d] = None
+                    self.tracer.drive_backward_until_junction()
+                    return self.navigate_to(self.current_node, goal, self.heading)
+                    
                 if junction is None:
                     return
 

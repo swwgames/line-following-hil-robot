@@ -111,7 +111,7 @@ class LineTracer:
             4) return the detected directions and hand control over to the caller
 
         Returns:
-            list: possible directions at the junction, e.g. ['L', 'F', 'R'].
+            list: possible directions at the junction, e.g. ['L', 'F', 'R'], or False if a bump is detected before reaching a junction.
         """
 
         debounce_steps = 3
@@ -121,12 +121,20 @@ class LineTracer:
         for _ in range(stabilizing_steps):
             if not self.step():
                 return None
+            
+            if self.robot.bumped():
+                self.robot.stop()
+                return False
 
         # 2) debounce branch‐center detection on either side
         count = 0
         while True:
             if not self.step():
                 return None
+            
+            if self.robot.bumped():
+                self.robot.stop()
+                return False
 
             left_mid = self.robot.read_line_sensors('left')[2]
             right_mid = self.robot.read_line_sensors('right')[2]
