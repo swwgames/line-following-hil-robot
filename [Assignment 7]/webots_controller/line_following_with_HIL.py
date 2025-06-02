@@ -11,30 +11,38 @@ import threading
 import socket
 import json
 
+streamlit_connection_failed = False
 def send_to_streamlit(current_node: str, planned_path: list[str]):
     """Sends data to the Streamlit dashboard.
+    When the connection fails, the function will be locked out. This allows running the controller without Streamlit.
     Args:
         current_node (str): The current node of the robot.
         planned_path (list[str]): Planned path of the robot.
     """
+    global streamlit_connection_failed
+    if streamlit_connection_failed:
+        return
+
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         client.connect(('localhost', 7000))
         payload = json.dumps({"node": current_node, "path": planned_path})
         client.sendall(payload.encode())
     except ConnectionRefusedError:
-        print("Connection refused. Is the server running?")
+        print("Connection refused. Disabling future Streamlit connections.")
+        streamlit_connection_failed = True
     except Exception as e:
         print(f"Error sending data: {e}")
+        streamlit_connection_failed = True  # Lock out on any error
     finally:
         client.close()
 
 def main():
     """Main function to run the WeBots controller."""
+    send_to_streamlit('', [])  # Signal a reset
     epuck_robot = EPUCKRobot()
     com = Communicator()
     bumped_prev = False
-    send_to_streamlit('', []) # Signal a reset
     print("Webots controller started. Attempting to connect to ESP32...")
 
     while epuck_robot.step():
