@@ -8,8 +8,8 @@ class LineTracer:
         """
         self.robot = robot
         self.pid = pid
-        self.base_speed = 2.0
-        self.max_speed = 3.0
+        self.base_speed = 1.5
+        self.max_speed = 2.5
 
     def step(self):
         """Step the robot. Computes PID control and sets wheel speeds.
@@ -66,9 +66,9 @@ class LineTracer:
         clear_count = 0
         debounce = 3
         while True:
-            if not self.robot.step(): 
+            if not self.robot.step():
                 return
-            
+
             vals = self.robot.read_ground_sensors('front')
             if all(vals[i] >= self.robot.line_threshold for i in old_idxs):
                 clear_count += 1
@@ -82,7 +82,7 @@ class LineTracer:
         while True:
             if not self.robot.step():
                 return
-            
+
             vals = self.robot.read_ground_sensors('front')
             for i in new_idxs:
                 if vals[i] < self.robot.line_threshold:
@@ -95,7 +95,7 @@ class LineTracer:
         while True:
             if not self.robot.step():
                 return
-            
+
             vals = self.robot.read_ground_sensors('front')
             if vals[check_idx] >= self.robot.line_threshold:
                 self.robot.stop()
@@ -121,7 +121,7 @@ class LineTracer:
         for _ in range(stabilizing_steps):
             if not self.step():
                 return None
-            
+
             if self.robot.bumped():
                 self.robot.stop()
                 return False
@@ -131,7 +131,7 @@ class LineTracer:
         while True:
             if not self.step():
                 return None
-            
+
             if self.robot.bumped():
                 self.robot.stop()
                 return False
