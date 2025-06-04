@@ -91,7 +91,8 @@ streamlit-autorefresh
 
 ### 3. Run the Webots Simulation
 1. Open Webots and load the `RaFLite.wbt` world.
-2. Set the controller of the e-puck robot to `line_following_with_HIL`.
-3. Connect your computer to the ESP32's Wi-Fi.
-4. Start the simulation — the robot will begin receiving data and controlling its movement wirelessly.
+2. Copy the `webots_controller` directory from `Assignment 7` over to the `controllers` directory of the simulation.
+3. Set the controller of the e-puck robot to `line_following_with_HIL`.
+4. Connect your computer to the ESP32's Wi-Fi.
+5. Start the simulation — the robot will begin receiving data and controlling its movement wirelessly.
 
