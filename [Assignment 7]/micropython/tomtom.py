@@ -554,6 +554,8 @@ class TomTom:
 
         nbrs = [n for n in self.grid_map[pnode].values() if n]
         if len(nbrs) != 1:
+            self.tracer.robot.stop()
+            self.com.client_socket.close()
             raise ValueError(f"{pnode} has {len(nbrs)} non-junction neighbors!")
         return nbrs[0]
 
