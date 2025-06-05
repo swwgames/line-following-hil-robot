@@ -25,6 +25,7 @@ def main() -> None:
     else:
         print("Fatal: Robot could not localize itself.")
         robot.stop()
+        com.client_socket.close()
         return
 
     try:

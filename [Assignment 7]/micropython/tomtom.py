@@ -375,6 +375,7 @@ class TomTom:
                     else:
                         print("Could not re-localize; aborting navigation")
                         self.tracer.robot.stop()
+                        self.com.client_socket.close()
                         return
 
             # 5) update position
