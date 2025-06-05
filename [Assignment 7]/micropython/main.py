@@ -19,7 +19,14 @@ def main() -> None:
     tracer    = LineTracer(pid, robot)
     navigator = TomTom(tracer)
 
-    node, new_heading = navigator.locate_self(known_heading='N')
+    result = navigator.locate_self(known_heading='N')
+    if result:
+        node, new_heading = result
+    else:
+        print("Fatal: Robot could not localize itself.")
+        robot.stop()
+        return
+
     try:
         navigator.perform_box_run('P1','P5', node, new_heading)
         navigator.perform_box_run('P2','P6', navigator.current_node, navigator.heading)
