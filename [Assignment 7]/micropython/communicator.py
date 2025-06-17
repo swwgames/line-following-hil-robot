@@ -133,3 +133,6 @@ class Communicator:
         except OSError as e:
             print(f"Socket send error: {e}")
             raise
+
+    def close(self):
+        self.client_socket.close()

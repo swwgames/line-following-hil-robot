@@ -374,8 +374,7 @@ class TomTom:
                         return self.navigate_to(self.current_node, goal, self.heading)
                     else:
                         print("Could not re-localize; aborting navigation")
-                        self.tracer.robot.stop()
-                        self.com.client_socket.close()
+                        self.tracer.robot.stop_and_close()
                         return
 
             # 5) update position

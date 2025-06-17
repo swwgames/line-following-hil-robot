@@ -1,5 +1,6 @@
 import struct
 from communicator import Communicator
+from time import sleep
 
 class EPUCKRobot:
     def __init__(self, com: Communicator):
@@ -99,6 +100,11 @@ class EPUCKRobot:
         """Immediately stops both motors."""
 
         self.set_wheel_speeds(0.0, 0.0)
+
+    def stop_and_close(self):
+        self.set_wheel_speeds(0.0, 0.0)
+        sleep(0.5)
+        self.com.close()
 
     def bumped(self) -> bool:
         """Check if the robot's proximity sensor detects an obstacle.

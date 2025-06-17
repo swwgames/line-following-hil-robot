@@ -265,7 +265,7 @@ class TomTom:
         Raises:
             RuntimeError: If the next node is not found in the grid map.
         """
-        
+
         self.current_node = origin
         self.heading = start_heading
 
@@ -273,8 +273,6 @@ class TomTom:
         if not path:
             print(f"No path from {origin} to {goal}")
             return
-
-        print(f"Route: {' → '.join(path)} (start heading={self.heading})")
 
         for next_node in path[1:]:
             # 1) figure out absolute direction (map‐north) to next_node
@@ -287,7 +285,8 @@ class TomTom:
 
             # 2) compute relative turn(s) from self.heading → desired
             turns = self._relative_turn(desired)
-            print(f"At {self.current_node}, heading={self.heading} → next={next_node}, desired={desired}, turns={turns}")
+            print(
+                f"At {self.current_node}, heading={self.heading} → next={next_node}, desired={desired}, turns={turns}")
 
             # 3) pivot if needed
             if turns is not None:
@@ -297,15 +296,26 @@ class TomTom:
                 # now we’re aligned with the branch
                 self.heading = desired
 
-            # 4) drive straight to the next junction
+            # 4) drive straight to the next junction or bump
             if next_node.startswith('P'):
                 self.tracer.drive_forward_until_bump()
             else:
                 junction = self.tracer.follow_until_junction()
 
+                if junction is False:
+                    # treat as obstacle—remove next_node and re-plan
+                    print(f"Obstacle detected before junction {next_node}. Removing {next_node} from map and replanning.")
+                    for node, nbrs in self.grid_map.items():
+                        for d, n in nbrs.items():
+                            if n == next_node:
+                                self.grid_map[node][d] = None
+                    self.tracer.drive_backward_until_junction()
+                    return self.navigate_to(self.current_node, goal, self.heading)
+
+
                 expected = set()
 
-                for rel in ('F','L','R'):
+                for rel in ('F', 'L', 'R'):
                     if rel == 'F':
                         abs_rel = self.heading
                     elif rel == 'L':
@@ -327,14 +337,15 @@ class TomTom:
                         return self.navigate_to(self.current_node, goal, self.heading)
                     else:
                         print("Could not re-localize; aborting navigation")
-                        self.robot.stop()
+                        self.tracer.robot.stop_and_close()
                         return
 
             # 5) update position
             self.current_node = next_node
             print(f" Arrived at {self.current_node}, heading={self.heading}")
 
-    def _rotate_heading(self, heading: str, turn: str) -> str:
+    @staticmethod
+    def _rotate_heading(heading: str, turn: str) -> str:
         """Rotate the heading based on the turn direction.
 
         Args:
@@ -345,12 +356,12 @@ class TomTom:
             str: The new heading after the turn.
         """
 
-        order = ['N','E','S','W']
+        order = ['N', 'E', 'S', 'W']
         i = order.index(heading)
         if turn == 'CW':
-            return order[(i+1)%4]
+            return order[(i + 1) % 4]
         if turn == 'CCW':
-            return order[(i-1)%4]
+            return order[(i - 1) % 4]
         return heading
 
     def _sense_junction(self) -> Dict[str,bool]:
@@ -360,13 +371,9 @@ class TomTom:
             Dict[str,bool]: A dictionary with keys 'front', 'left', 'right' indicating whether each direction has a line detected (True) or not (False).
         """
 
-        flags = {}
-        # front = any line under front array?
-        flags['front'] = any(self.tracer.robot.read_line_sensors('front'))
-        # left  = any line under left array?
-        flags['left']  = any(self.tracer.robot.read_line_sensors('left'))
-        # right = any line under right array?
-        flags['right'] = any(self.tracer.robot.read_line_sensors('right'))
+        flags = {'front': any(self.tracer.robot.read_line_sensors('front')),
+                 'left': any(self.tracer.robot.read_line_sensors('left')),
+                 'right': any(self.tracer.robot.read_line_sensors('right'))}
         return flags
 
     def _match_observation(self,node: str, heading: str, obs: Dict[str,bool]) -> bool:
@@ -394,102 +401,140 @@ class TomTom:
                 return False
         return True
 
-    def locate_self(self, max_steps: int = 50, known_heading: Optional[str] = None) -> Optional[Tuple[str,str]]:
-        """Locate the robot's current position and heading in the grid map by following branches and observing junctions.
+    def _get_opposite_heading(self, heading: str) -> Optional[str]:
+        """Calculates the opposite cardinal direction."""
+        if not heading:
+            return None
+        opposites = {'N': 'S', 'S': 'N', 'E': 'W', 'W': 'E'}
+        return opposites.get(heading)
+
+    # Replace the locate_self function in tomtom.py with this version.
+
+    def locate_self(self, max_steps: int = 50, known_heading: Optional[str] = None) -> Optional[Tuple[str, str]]:
+        """
+        Locate the robot by attempting to find a junction and then exploring. If an
+        obstacle is found before the first junction, it attempts one recovery by
+        turning around, updating its heading, and trying again.
 
         Args:
-            max_steps (int): The maximum number of steps to take while trying to localize, default is 50.
-            known_heading (Optional[str]): The current heading of the robot ('N', 'E', 'S', 'W') or None if unknown.
+            max_steps (int): The maximum number of steps for the main localization loop.
+            known_heading (Optional[str]): The robot's initial known heading ('N','E','S','W').
 
         Returns:
-            Optional[Tuple[str,str]]: A tuple containing the node name and heading if successfully localized, or None if unable to localize uniquely.
+            A tuple of (node, heading) if localization is successful, otherwise None.
         """
-
-        # 1) initialize candidate set
-        if known_heading in ('N','E','S','W'):
-            # only these headings
-            candidates = [(node, known_heading)
-                          for node in self.grid_map]
-        else:
-            # all four possible headings at every node
-            candidates = [
-                (node, h)
-                for node in self.grid_map
-                for h in ('N','E','S','W')
-            ]
-        steps = 0
-
-        while len(candidates) > 1 and steps < max_steps:
-            steps += 1
-
-            # drive until the next junction
-            self.tracer.follow_until_junction()
-
-            # sense which branches exist here
-            obs = self._sense_junction()
-            print(f"[Step {steps}] saw {obs}, candidates={len(candidates)}")
-
-            # 2) eliminate any candidate whose map‐pattern are not equal to obs
-            candidates = [
-                (node,head)
-                for node,head in candidates
-                if self._match_observation(node,head,obs)
-            ]
-            if len(candidates) <= 1:
-                break
-
-            # 3) pick the best branch to split the remaining candidates
-            best_rel, best_score = None, float('inf')
-            for rel, saw in obs.items():
-                if not saw:
-                    continue
-                # count how many of the remaining candidates actually have this branch
-                count = sum(
-                    1 for (n,h) in candidates
-                    if self.grid_map[n][
-                        (h if rel=='front' else
-                         self._rotate_heading(h,'CCW') if rel=='left' else
-                         self._rotate_heading(h,'CW'))
-                    ] is not None
-                )
-                if 0 < count < best_score:
-                    best_score, best_rel = count, rel
-
-            if best_rel is None:
-                print("No discriminating branch—stopping localization.")
-                break
-
-            # 4) physically pivot into that branch (or go straight)
-            if best_rel == 'left':
-                self.tracer.pivot_into_direction('CCW')
-                rel_turn = 'CCW'
-            elif best_rel == 'right':
-                self.tracer.pivot_into_direction('CW')
-                rel_turn = 'CW'
+        # This outer loop allows for one initial attempt and one recovery attempt.
+        current_heading_attempt = known_heading
+        for attempt in range(2):
+            if attempt > 0:
+                if not current_heading_attempt:
+                    print("Cannot attempt recovery without a known initial heading.")
+                    return None
+                print(f"\n--- Recovery Attempt (New Heading: {current_heading_attempt}) ---")
             else:
-                rel_turn = None
+                print(f"--- Localization Attempt #1 (Heading: {current_heading_attempt}) ---")
 
-            # 5) advance each surviving candidate along that branch
-            new_cands = []
-            for node,head in candidates:
-                new_h = self._rotate_heading(head, rel_turn) if rel_turn else head
-                # pick the neighbor in that direction
-                if best_rel == 'front':
-                    nbr = self.grid_map[node][head]
+            # --- Initialization for this attempt ---
+            if current_heading_attempt:
+                candidates = [(node, current_heading_attempt) for node in self.grid_map]
+            else:
+                candidates = [(node, h) for node in self.grid_map for h in ('N', 'E', 'S', 'W')]
+            steps = 0
+            blocked_paths = {}
+
+            # --- PHASE 1: Initial Junction Finding ---
+            print("Driving forward to find the first junction...")
+            initial_junction_result = self.tracer.follow_until_junction()
+
+            if initial_junction_result is False:
+                # Obstacle found on this attempt. Prepare for the next one.
+                print(f"Obstacle hit before first junction.")
+                new_heading = self._get_opposite_heading(current_heading_attempt)
+
+                if new_heading:
+                    print(f"Turning 180 degrees. New heading will be {new_heading}.")
+                    self.tracer.pivot_into_direction('180')
+                    current_heading_attempt = new_heading
+                    continue  # Starts the next iteration of the for loop
                 else:
-                    nbr = self.grid_map[node][new_h]
-                if nbr:
-                    new_cands.append((nbr, new_h))
-            candidates = new_cands
+                    print("Could not determine opposite heading to recover. Halting.")
+                    break  # Exits the for loop, leading to failure
 
-        # done
-        if len(candidates) == 1:
-            node, head = candidates[0]
-            print(f"Located at {node}, heading={head}")
-            return node, head
-        else:
-            print("Unable to localize uniquely")
-            return None
+            # --- If we get here, the first junction was found successfully ---
+            print("First junction reached. Starting main localization process.")
+
+            # --- PHASE 2: Main Localization Loop ---
+            while len(candidates) > 1 and steps < max_steps:
+                steps += 1
+                obs = self._sense_junction()
+                print(f"[Step {steps}] At junction, saw {obs}. Candidates: {len(candidates)}")
+                candidates = [c for c in candidates if self._match_observation(c[0], c[1], obs)]
+
+                if len(candidates) <= 1:
+                    break
+
+                candidate_key = tuple(sorted(candidates))
+                excluded_dirs = blocked_paths.get(candidate_key, set())
+                possible_moves = [r for r, saw in obs.items() if saw and r not in excluded_dirs]
+
+                if not possible_moves and candidate_key in blocked_paths:
+                    print(f"All known exits {excluded_dirs} are blocked. Resetting memory and retrying.")
+                    del blocked_paths[candidate_key]
+                    possible_moves = [r for r, saw in obs.items() if saw]
+
+                if not possible_moves:
+                    print("No valid paths to explore from this junction. Halting.")
+                    break
+
+                best_rel, best_score = None, float('inf')
+                for rel in possible_moves:
+                    count = sum(1 for (n, h) in candidates if self.grid_map[n][(
+                        h if rel == 'front' else self._rotate_heading(h,'CCW') if rel == 'left' else self._rotate_heading(h, 'CW'))] is not None)
+                    score = abs(count - len(candidates) / 2)
+                    if 0 < count < len(candidates) and score < best_score:
+                        best_score, best_rel = score, rel
+
+                if best_rel is None:
+                    best_rel = possible_moves[0]
+                    print(f"No discriminating branch found. Defaulting to explore '{best_rel}'.")
+
+                candidates_before_move = list(candidates)
+                print(f"Decision: Attempting relative path '{best_rel}'.")
+                rel_turn = None
+                if best_rel == 'left':
+                    self.tracer.pivot_into_direction('CCW'); rel_turn = 'CCW'
+                elif best_rel == 'right':
+                    self.tracer.pivot_into_direction('CW'); rel_turn = 'CW'
+
+                junction_result = self.tracer.follow_until_junction()
+
+                if junction_result is False:
+                    print(f"Obstacle on path '{best_rel}'. Reverting state and returning.")
+                    candidates = candidates_before_move
+                    if candidate_key not in blocked_paths: blocked_paths[candidate_key] = set()
+                    blocked_paths[candidate_key].add(best_rel)
+                    self.tracer.drive_backward_until_junction()
+                    continue
+                else:
+                    new_cands = []
+                    for node, head in candidates:
+                        new_h = self._rotate_heading(head, rel_turn) if rel_turn else head
+                        nbr = self.grid_map[node][new_h]
+                        if nbr: new_cands.append((nbr, new_h))
+                    candidates = new_cands
+                    print(f"Move successful. Advanced to new state. Candidates: {len(candidates)}")
+
+            # --- Final Result for this attempt ---
+            if len(candidates) == 1:
+                node, head = candidates[0]
+                print(f"✅ Localization successful! Position: {node}, Heading: {head}")
+                return node, head
+            else:
+                print(f"❌ Attempt failed to localize uniquely.")
+
+        # If the for loop completes without a successful return
+        print("All localization attempts failed. Halting.")
+        return None
         
     def _last_junction_before(self, pnode: str) -> str:
         """Find the last junction before a pickup or dropoff node.

@@ -8,8 +8,8 @@ class LineTracer:
         """
         self.robot = robot
         self.pid = pid
-        self.base_speed = 1.5
-        self.max_speed = 2.5
+        self.base_speed = 2
+        self.max_speed = 3
 
     def step(self):
         """Step the robot. Computes PID control and sets wheel speeds.
@@ -28,7 +28,7 @@ class LineTracer:
 
         return True
 
-    def pivot_into_direction(self, direction: str ='CCW', turn_speed: float =1.0) -> None:
+    def pivot_into_direction(self, direction: str ='CCW', turn_speed: float =1.5) -> None:
         """Spin in place toward the given direction (clockwise or counterclockwise), with the given turn speed.
 
         Steps:
@@ -185,7 +185,7 @@ class LineTracer:
         while True:
             if not self.robot.step():
                 return
-            self.robot.set_wheel_speeds(-1.0, -1.0)
+            self.robot.set_wheel_speeds(-0.75, -0.75)
 
             flags = self.robot.read_line_sensors('right')
             if sum(flags) >= threshold:
