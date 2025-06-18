@@ -37,6 +37,7 @@ grid_map = {
     "P8": {"N": "E6", "E": None, "S": None, "W": None},
 }
 
+
 class TomTom:
     def __init__(self, tracer):
         """Initialize the TomTom navigation system with a tracer and a grid map.
@@ -48,6 +49,7 @@ class TomTom:
 
         self.tracer = tracer
         self.grid_map = grid_map
+        self.blocked_paths = set()
 
     def plan_route(self, goal: str) -> List[str]:
         """Plan a route from the current node to the goal node using a breadth-first search. Also minimizes 90° turns.
@@ -77,7 +79,7 @@ class TomTom:
             u_cost = dist[(u_node, u_head)]
             # explore all available moves
             for abs_dir, v in self.grid_map[u_node].items():
-                if v is None:
+                if v is None or (u_node, v) in self.blocked_paths:
                     continue
                 # compute how many 90° turns this move costs
                 turns = self._relative_turn(u_head, abs_dir)
@@ -139,7 +141,7 @@ class TomTom:
                 # map P1…P4 to row -1, P5…P8 to row 6 (optional)
                 i = int(n[1:]) - 1
                 row = -1 if i < 4 else 6
-                col = i % 4 + (0 if row==-1 else 2)
+                col = i % 4 + (0 if row == -1 else 2)
             else:
                 row = ord(n[0]) - ord('A')
                 col = int(n[1]) - 1
@@ -152,19 +154,19 @@ class TomTom:
             rg, cg = coords(goal)
             dr, dc = rg - r0, cg - c0
             if abs(dr) > abs(dc):
-                desired = 'S' if dr>0 else 'N'
+                desired = 'S' if dr > 0 else 'N'
             else:
-                desired = 'E' if dc>0 else 'W'
+                desired = 'E' if dc > 0 else 'W'
             turn = self._relative_turn(heading, desired)
             if turn is None:
                 return 0
             return len(turn) if isinstance(turn, tuple) else 1
 
         # 3) A* setup
-        headings = ['N','E','S','W']
+        headings = ['N', 'E', 'S', 'W']
         start = (self.current_node, self.heading)
         INF = float('inf')
-        g_score = { (n,h):INF for n in self.grid_map for h in headings }
+        g_score = {(n, h): INF for n in self.grid_map for h in headings}
         g_score[start] = 0
         came_from = {}
 
@@ -190,7 +192,7 @@ class TomTom:
 
             # expand neighbors
             for abs_dir, v in self.grid_map[u_node].items():
-                if v is None:
+                if v is None or (u_node, v) in self.blocked_paths:
                     continue
                 turns = self._relative_turn(u_head, abs_dir)
                 if turns is None:
@@ -203,12 +205,12 @@ class TomTom:
                     w = 1
                     new_head = abs_dir
 
-                tentative_g = g_score[(u_node,u_head)] + w
-                if tentative_g < g_score[(v,new_head)]:
-                    g_score[(v,new_head)] = tentative_g
-                    came_from[(v,new_head)] = (u_node, u_head)
-                    f_score = tentative_g + heuristic((v,new_head))
-                    heapq.heappush(open_heap, (f_score, tentative_g, (v,new_head)))
+                tentative_g = g_score[(u_node, u_head)] + w
+                if tentative_g < g_score[(v, new_head)]:
+                    g_score[(v, new_head)] = tentative_g
+                    came_from[(v, new_head)] = (u_node, u_head)
+                    f_score = tentative_g + heuristic((v, new_head))
+                    heapq.heappush(open_heap, (f_score, tentative_g, (v, new_head)))
 
         # no path
         return []
@@ -225,7 +227,7 @@ class TomTom:
             TypeError: if the number of arguments is not 1 or 2.
 
         Returns:
-            Union[None, str, Tuple[str, str]]: 
+            Union[None, str, Tuple[str, str]]:
                 - None if no turn is needed (same heading)
                 - 'CW' for a single clockwise turn
                 - 'CCW' for a single counter-clockwise turn
@@ -254,25 +256,33 @@ class TomTom:
         # diff == 2
         return ('CW', 'CW')
 
-    def navigate_to(self, origin: str, goal: str, start_heading: str = 'N'):
+    def navigate_to(self, origin: str, goal: str, start_heading: str = 'N', _is_retry: bool = False):
         """Navigate from the origin node to the goal node, starting with a given heading.
 
         Args:
             origin (str): The name of the starting node.
             goal (str): The name of the goal node.
             start_heading (str): The initial heading of the robot, default is 'N'.
-
-        Raises:
-            RuntimeError: If the next node is not found in the grid map.
+            _is_retry (bool): Internal flag to prevent infinite retry loops.
         """
 
         self.current_node = origin
         self.heading = start_heading
 
         path = self.plan_route_astar(goal)
+
         if not path:
-            print(f"No path from {origin} to {goal}")
-            return
+            # If planning fails, check if we have blocked paths in our memory.
+            if self.blocked_paths and not _is_retry:
+                print(f"No path found from {origin} to {goal}. Assuming temporary obstacles may have cleared.")
+                print("Clearing blocked paths and attempting to replan the entire route.")
+                self.blocked_paths.clear()
+                # Retry planning from the current position, marking this as a retry attempt.
+                return self.navigate_to(self.current_node, goal, self.heading, _is_retry=True)
+            else:
+                # If there were no blocked paths, or if this was already a retry attempt, the goal is truly unreachable.
+                print(f"CRITICAL: No path from {origin} to {goal}. The goal is unreachable.")
+                return
 
         for next_node in path[1:]:
             # 1) figure out absolute direction (map‐north) to next_node
@@ -307,15 +317,13 @@ class TomTom:
                 junction = self.tracer.follow_until_junction()
 
                 if junction is False:
-                    # treat as obstacle—remove next_node and re-plan
-                    print(f"Obstacle detected before junction {next_node}. Removing {next_node} from map and replanning.")
-                    for node, nbrs in self.grid_map.items():
-                        for d, n in nbrs.items():
-                            if n == next_node:
-                                self.grid_map[node][d] = None
+                    # treat as obstacle—mark path as blocked and re-plan
+                    print(
+                        f"Obstacle detected before junction {next_node}. Marking path ({self.current_node} -> {next_node}) as blocked and replanning.")
+                    self.blocked_paths.add((self.current_node, next_node))
                     self.tracer.drive_backward_until_junction()
+                    # Recursive call to replan from the current node
                     return self.navigate_to(self.current_node, goal, self.heading)
-
 
                 expected = set()
 
@@ -368,7 +376,7 @@ class TomTom:
             return order[(i - 1) % 4]
         return heading
 
-    def _sense_junction(self) -> Dict[str,bool]:
+    def _sense_junction(self) -> Dict[str, bool]:
         """Sense the junction by checking the line sensors. This is to validate the robot's position after each junction.
 
         Returns:
@@ -380,7 +388,7 @@ class TomTom:
                  'right': any(self.tracer.robot.read_line_sensors('right'))}
         return flags
 
-    def _match_observation(self,node: str, heading: str, obs: Dict[str,bool]) -> bool:
+    def _match_observation(self, node: str, heading: str, obs: Dict[str, bool]) -> bool:
         """Check if the observed branches at a junction match the expected branches in the grid map.
 
         Args:
@@ -493,7 +501,9 @@ class TomTom:
                 best_rel, best_score = None, float('inf')
                 for rel in possible_moves:
                     count = sum(1 for (n, h) in candidates if self.grid_map[n][(
-                        h if rel == 'front' else self._rotate_heading(h,'CCW') if rel == 'left' else self._rotate_heading(h, 'CW'))] is not None)
+                        h if rel == 'front' else self._rotate_heading(h,
+                                                                      'CCW') if rel == 'left' else self._rotate_heading(
+                            h, 'CW'))] is not None)
                     score = abs(count - len(candidates) / 2)
                     if 0 < count < len(candidates) and score < best_score:
                         best_score, best_rel = score, rel
@@ -506,9 +516,11 @@ class TomTom:
                 print(f"Decision: Attempting relative path '{best_rel}'.")
                 rel_turn = None
                 if best_rel == 'left':
-                    self.tracer.pivot_into_direction('CCW'); rel_turn = 'CCW'
+                    self.tracer.pivot_into_direction('CCW');
+                    rel_turn = 'CCW'
                 elif best_rel == 'right':
-                    self.tracer.pivot_into_direction('CW'); rel_turn = 'CW'
+                    self.tracer.pivot_into_direction('CW');
+                    rel_turn = 'CW'
 
                 junction_result = self.tracer.follow_until_junction()
 
@@ -539,7 +551,7 @@ class TomTom:
         # If the for loop completes without a successful return
         print("All localization attempts failed. Halting.")
         return None
-        
+
     def _last_junction_before(self, pnode: str) -> str:
         """Find the last junction before a pickup or dropoff node.
 
@@ -578,10 +590,10 @@ class TomTom:
         Raises:
             ValueError: If the pickup or dropoff node is not a valid pickup or dropoff lane.
         """
-        
+
         # —— pickup phase ——
         print(f"→ Navigating to pickup lane {pickup}")
-        
+
         self.navigate_to(origin, pickup, heading)
         self.tracer.drive_backward_until_junction()
 
@@ -592,4 +604,4 @@ class TomTom:
         self.tracer.drive_backward_until_junction()
         self.current_node = self._last_junction_before(dropoff)
 
-        print("✅ Box run complete")
+        print("Box run complete")

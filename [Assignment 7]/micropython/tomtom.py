@@ -74,6 +74,7 @@ class TomTom:
         self.header = None
         self.heading = None
         self.current_node = None
+        self.blocked_paths = set()
 
         self.com = tracer.robot.com
 
@@ -107,7 +108,7 @@ class TomTom:
             u_cost = dist[(u_node, u_head)]
             # explore all available moves
             for abs_dir, v in self.grid_map[u_node].items():
-                if v is None:
+                if v is None or (u_node, v) in self.blocked_paths:
                     continue
                 # compute how many 90° turns this move costs
                 turns = self._relative_turn(u_head, abs_dir)
@@ -220,7 +221,7 @@ class TomTom:
 
             # expand neighbors
             for abs_dir, v in self.grid_map[u_node].items():
-                if v is None:
+                if v is None or (u_node, v) in self.blocked_paths:
                     continue
                 turns = self._relative_turn(u_head, abs_dir)
                 if turns is None:
@@ -301,8 +302,17 @@ class TomTom:
 
         path = self.plan_route_astar(goal)
         if not path:
-            print(f"No path from {origin} to {goal}")
-            return
+            # If planning fails, check if we have blocked paths in our memory.
+            if self.blocked_paths and not _is_retry:
+                print(f"No path found from {origin} to {goal}. Assuming temporary obstacles may have cleared.")
+                print("Clearing blocked paths and attempting to replan the entire route.")
+                self.blocked_paths.clear()
+                # Retry planning from the current position, marking this as a retry attempt.
+                return self.navigate_to(self.current_node, goal, self.heading, _is_retry=True)
+            else:
+                # If there were no blocked paths, or if this was already a retry attempt, the goal is truly unreachable.
+                print(f"CRITICAL: No path from {origin} to {goal}. The goal is unreachable.")
+                return
 
         format_str = '2s' * len(path)
         encoded_data = [s.encode('utf-8') for s in path]
@@ -342,13 +352,12 @@ class TomTom:
                 junction = self.tracer.follow_until_junction()
 
                 if junction is False:
-                    # treat as obstacle—remove next_node and replan
-                    print(f"Obstacle detected before junction {next_node}. Removing {next_node} from map and replanning.")
-                    for node, nbrs in self.grid_map.items():
-                        for d, n in nbrs.items():
-                            if n == next_node:
-                                self.grid_map[node][d] = None
+                    # treat as obstacle—mark path as blocked and re-plan
+                    print(
+                        f"Obstacle detected before junction {next_node}. Marking path ({self.current_node} -> {next_node}) as blocked and replanning.")
+                    self.blocked_paths.add((self.current_node, next_node))
                     self.tracer.drive_backward_until_junction()
+                    # Recursive call to replan from the current node
                     return self.navigate_to(self.current_node, goal, self.heading)
                     
                 if junction is None:
