@@ -32,128 +32,30 @@ class LineTracer:
 
         return True
 
-    def pivot_into_direction(self, direction='CCW', turn_speed=2.0):
-        """Spin in place toward the given direction, with the given turn speed.
-
-        For 'CCW' and 'CW', it executes a 90-degree turn at an intersection.
-        For '180', it performs a 180-degree turn, correctly handling both
-        straight lines and various junction types using side sensors.
+    def _execute_turn_sequence(self, old_idxs, new_idxs, check_idx, debounce=3):
+        """
+        Executes the physical turn-and-align sequence.
+        This helper function should be called after wheel speeds are set.
 
         Args:
-            direction (str): 'CCW', 'CW', or '180'.
-            turn_speed (float): Speed of the turn, default is 2.0.
-
-        Raises:
-            ValueError: if direction is not 'CCW', 'CW', or '180'.
+            old_idxs (list): the list of old line sensors.
+            new_idxs (list): the list of new line sensors.
+            check_idx (int): value corresponding to the sensor that needs to read white when the robot is centered on the line.
+            debounce (int): Amount of readings to be sure of detecting a line.
         """
-
-        # Stop any forward/PID motion
-        self.robot.stop()
-
-        # Default turn direction is CCW. This will be used for 'CCW' and the default '180' turn.
-        ls, rs = -turn_speed, turn_speed
-        if direction == 'CW':
-            ls, rs = turn_speed, -turn_speed
-        elif direction not in ['CCW', '180']:
-            raise ValueError("direction must be 'CCW', 'CW', or '180'")
-
-        # --- Special logic for 180-degree turns ---
-        if direction == '180':
-            # Use dedicated side sensors for robust junction detection, as you suggested.
-            initial_vals_l = self.robot.read_ground_sensors('left')
-            initial_vals_r = self.robot.read_ground_sensors('right')
-
-            # Correctly check if any sensor in the array sees a line
-            has_left_branch = any(val < self.robot.line_threshold for val in initial_vals_l)
-            has_right_branch = any(val < self.robot.line_threshold for val in initial_vals_r)
-            is_junction = has_left_branch or has_right_branch
-
-            if is_junction:
-                # --- JUNCTION 180 LOGIC ---
-                # If there's only a left branch, turn CW (away from it). Otherwise, turn CCW.
-                if has_left_branch and not has_right_branch:
-                    ls, rs = turn_speed, -turn_speed  # Turn CW
-                    side_branch_sensors = [3, 4]  # Monitor right front sensors
-                else:
-                    ls, rs = -turn_speed, turn_speed  # Turn CCW
-                    side_branch_sensors = [0, 1]  # Monitor left front sensors
-
-                self.robot.set_wheel_speeds(ls, rs)
-                DEBOUNCE = 3
-
-                # 1) Wait until we see the side branch with the appropriate sensors
-                seen_side_branch = False
-                while not seen_side_branch:
-                    if not self.robot.step(): return
-                    vals = self.robot.read_ground_sensors('front')
-                    if any(vals[i] < self.robot.line_threshold for i in side_branch_sensors):
-                        seen_side_branch = True
-
-                # 2) Now, wait until we have completely cleared that side branch
-                clear_count = 0
-                while True:
-                    if not self.robot.step(): return
-                    vals = self.robot.read_ground_sensors('front')
-                    if all(vals[i] >= self.robot.line_threshold for i in side_branch_sensors):
-                        clear_count += 1
-                        if clear_count >= DEBOUNCE:
-                            break  # Side branch has been passed
-                    else:
-                        clear_count = 0
-
-                # 3) Finally, find the original path with the center sensor
-                while True:
-                    if not self.robot.step(): return
-                    vals = self.robot.read_ground_sensors('front')
-                    if vals[2] < self.robot.line_threshold:
-                        self.robot.stop()
-                        break
-            else:
-                # --- STRAIGHT LINE 180 LOGIC ---
-                self.robot.set_wheel_speeds(ls, rs)  # Use default CCW turn
-                center_idx = 2
-                DEBOUNCE = 3
-
-                # 1) Wait until the center sensor has cleared the line
-                clear_count = 0
-                while True:
-                    if not self.robot.step(): return
-                    vals = self.robot.read_ground_sensors('front')
-                    if vals[center_idx] >= self.robot.line_threshold:
-                        clear_count += 1
-                        if clear_count >= DEBOUNCE:
-                            break
-                    else:
-                        clear_count = 0
-
-                # 2) Now, wait until the center sensor finds the line again
-                while True:
-                    if not self.robot.step(): return
-                    vals = self.robot.read_ground_sensors('front')
-                    if vals[center_idx] < self.robot.line_threshold:
-                        self.robot.stop()
-                        break
-            return  # End the function for all 180 turns
-
-        # --- Logic for 90-degree turns (CW/CCW) ---
-        self.robot.set_wheel_speeds(ls, rs)
-        DEBOUNCE = 3
-
-        old_idxs = [3, 4] if direction == 'CCW' else [0, 1]
-        new_idxs = [0, 1] if direction == 'CCW' else [3, 4]
-
-        # 1) Clear the old line
+        # 1) Wait until old‐line sensors clear the line
         clear_count = 0
         while True:
             if not self.robot.step(): return
             vals = self.robot.read_ground_sensors('front')
             if all(vals[i] >= self.robot.line_threshold for i in old_idxs):
                 clear_count += 1
-                if clear_count >= DEBOUNCE: break
+                if clear_count >= debounce:
+                    break
             else:
                 clear_count = 0
 
-        # 2) Find the new branch
+        # 2) Wait until both new‐branch sensors see black at least once
         seen = set()
         while True:
             if not self.robot.step(): return
@@ -161,16 +63,72 @@ class LineTracer:
             for i in new_idxs:
                 if vals[i] < self.robot.line_threshold:
                     seen.add(i)
-            if set(new_idxs).issubset(seen): break
+            if set(new_idxs).issubset(seen):
+                break
 
-        # 3) Center on the new line
-        check_idx = 1 if direction == 'CCW' else 3
+        # 3) Wait until the adjacent sensor reads white, which means the center is on the line
         while True:
             if not self.robot.step(): return
             vals = self.robot.read_ground_sensors('front')
             if vals[check_idx] >= self.robot.line_threshold:
                 self.robot.stop()
                 break
+
+    def pivot_into_direction(self, direction='CCW', turn_speed=2.0):
+        """
+        Spins in place toward the given direction with robust alignment.
+
+        This function first determines the parameters for the turn, then calls
+        a helper to execute the physical sensor-based alignment.
+
+        Args:
+            direction (str): The direction to turn to.
+            turn_speed (float): The turn speed.
+        """
+        # Stop any previous motion
+        self.robot.stop()
+
+        # --- 1. Determine Turn Parameters ---
+        if direction == 'CCW':
+            ls, rs = -turn_speed, turn_speed
+            old_idxs = [3, 4]
+            new_idxs = [0, 1]
+            check_idx = 1
+
+        elif direction == 'CW':
+            ls, rs = turn_speed, -turn_speed
+            old_idxs = [0, 1]
+            new_idxs = [3, 4]
+            check_idx = 3
+
+        elif direction == '180':
+            # Default to a CCW turn
+            ls, rs = -turn_speed, turn_speed
+            old_idxs = [3, 4]
+            new_idxs = [0, 1]
+            check_idx = 1
+
+            # Check for a T-junction with only a left branch, which requires a CW turn
+            vals_l = self.robot.read_ground_sensors('left')
+            vals_r = self.robot.read_ground_sensors('right')
+            has_left = any(v < self.robot.line_threshold for v in vals_l)
+            has_right = any(v < self.robot.line_threshold for v in vals_r)
+
+            if has_left and not has_right:
+                # Override parameters for a CW turn
+                ls, rs = turn_speed, -turn_speed
+                old_idxs = [0, 1]
+                new_idxs = [3, 4]
+                check_idx = 3
+        else:
+            raise ValueError("direction must be 'CCW', 'CW', or '180'")
+
+        # --- 2. Execute the Turn ---
+        # Start the robot spinning with the configured speeds
+        self.robot.set_wheel_speeds(ls, rs)
+
+        # Call the helper to perform the reliable alignment sequence
+        self._execute_turn_sequence(old_idxs, new_idxs, check_idx)
 
     def follow_until_junction(self) -> list | bool:
         """Follow PID on front array until a side‐array junction is detected

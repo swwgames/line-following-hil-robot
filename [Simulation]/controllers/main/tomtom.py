@@ -290,8 +290,12 @@ class TomTom:
 
             # 3) pivot if needed
             if turns is not None:
-                for t in (turns if isinstance(turns, tuple) else (turns,)):
-                    self.tracer.pivot_into_direction(direction=t)
+                if isinstance(turns, tuple) and len(turns) >= 2:
+                    if turns[0] == turns[1]:
+                        self.tracer.pivot_into_direction(direction='180')
+                else:
+                    for t in (turns if isinstance(turns, tuple) else (turns,)):
+                        self.tracer.pivot_into_direction(direction=t)
 
                 # now we’re aligned with the branch
                 self.heading = desired
